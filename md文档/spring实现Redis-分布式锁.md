@@ -778,7 +778,7 @@ update t_bonus set version = 1235, left_count = left_count-1 where id = 10001 an
 update t_bonus set version = 1235, left_count = left_count-1 where id = 10001 and version = 1234
 ```
 
-### 2.redis 原生实现分布式锁
+## 2.redis 原生实现分布式锁
 
 set if not exist 
 
@@ -802,7 +802,7 @@ setnx num 13    >1
 
 expire num 5    五秒后过时 ，五秒后获取成功
 
-#### getset指令
+### getset指令
 
 ```
 redis> GETSET db mongodb    # 没有旧值，返回 nil
@@ -818,7 +818,136 @@ redis> GET db
 "redis"
 ```
 
+### 代码
 
+```
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+    <version>${spring-boot.version}</version>
+</dependency>
+```
+
+```
+@Component
+public class RedisTemplateUtil {
+
+    //锁名称
+    public static final String LOCK_PREFIX = "redis_lock:";
+    //加锁失效时间，毫秒
+    public static final int LOCK_EXPIRE = 500; // ms
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+
+    /**
+     *  最终加强分布式锁
+     *
+     * @param key key值
+     * @return 是否获取到
+     */
+    public boolean lock(String key){
+        String lock = LOCK_PREFIX + key;
+        System.out.println(Thread.currentThread().getName()+"锁名="+lock);
+        // 利用lambda表达式
+        RedisCallback redisCallback=new RedisCallback() {
+            @Override
+            public Object doInRedis(RedisConnection connection) throws DataAccessException {
+                // 过期时间=当前时间+锁失效时间+1
+                long expireAt = System.currentTimeMillis() + LOCK_EXPIRE + 1;
+                // key自定义 value=过期时间
+                Boolean acquire = connection.setNX(lock.getBytes(), String.valueOf(expireAt).getBytes());
+                if (acquire) {
+                    System.out.println(Thread.currentThread().getName()+"获取到锁");
+                    return true;
+                } else {
+                    // 获取过期时间
+                    byte[] value = connection.get(lock.getBytes());
+
+                    if (Objects.nonNull(value) && value.length > 0) {
+
+                        long expireTime = Long.parseLong(new String(value));
+                        // 如果锁已经过期
+                        if (expireTime < System.currentTimeMillis()) {
+                            // 重新加锁，防止死锁
+                            byte[] oldValue = connection.getSet(lock.getBytes(), String.valueOf(System.currentTimeMillis() + LOCK_EXPIRE + 1).getBytes());
+                              System.out.println(Thread.currentThread().getName()+"锁过期，重新加锁");
+                            // 加锁后锁运行到下面这行还未过期就是成功加锁，下面是校验原先的过期时间是否已经到期
+                            return Long.parseLong(new String(oldValue)) < System.currentTimeMillis();
+                        }
+                    }
+                }
+                return false;
+            }
+        };
+        return  (Boolean)redisTemplate.execute(redisCallback);
+    }
+
+    /**
+     * 删除锁
+     *
+     * @param key
+     */
+    public void delete(String key) {
+        redisTemplate.delete(LOCK_PREFIX+key);
+        System.out.println(Thread.currentThread().getName()+"删除锁key="+LOCK_PREFIX+key);
+    }
+    
+}
+```
+
+```
+@Test
+public void redisLockTest(){
+    System.out.println("begin task");
+    for (int i = 0; i < 20; i++) {
+        Thread thread=new Thread(
+                (Runnable) () ->{
+            bussiness();
+        });
+        thread.start();
+    }
+   while (true){
+
+   }
+}
+
+public void bussiness() {
+    String key="num";
+    boolean lock = redisTemplateUtil.lock(key);
+    if (lock){
+        // 执行业务逻辑操作
+        System.out.println("获取锁成功："+Thread.currentThread().getName()+"执行业务操作");
+        redisTemplateUtil.delete(key);
+    }else{
+        System.out.println(Thread.currentThread().getName()+"获取锁失败，自旋");
+        // 设置失败次数计数器, 当到达5次时,自旋5次, 返回失败
+        int failCount = 1;
+        while(failCount <= 5){
+            // 等待500ms重试taskScheduler
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            if (redisTemplateUtil.lock(key)){
+                // 执行业务逻辑操作
+                System.out.println(Thread.currentThread().getName()+"自旋后获取锁,执行业务操作");
+                redisTemplateUtil.delete(key);
+                // 退出自旋，否则一直尝试获取锁，自旋
+                break;
+            }else{
+                failCount ++;
+            }
+            if (failCount>5){
+                throw new RuntimeException(Thread.currentThread().getName()+"获取锁失败，现在创建的人太多了, 请稍等再试");
+            }
+        }
+    }
+    System.out.println(Thread.currentThread().getName()+"执行完业务");
+}
+```
 
 ## 3.redisson实现分布式锁-基础篇
 
@@ -876,7 +1005,233 @@ redis的启动指令如果直接点击 redis-server.exe 默认无密码登录  �
 
 所以用配置文件的redis启动   目录下  redis-server.exe redis.windows.conf
 
+### 代码
 
+```
+@Configuration // springboot启动时自动加载该配置文件
+public class CommonConfig {
+
+    /**
+     * 自定义线程池   processors-服务器核数
+     * @return
+     */
+    @Bean
+    public ThreadPoolExecutor initThreadPoolExecutor(){
+
+        int processors = Runtime.getRuntime().availableProcessors();
+
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(processors, processors * 2, 1L, TimeUnit.SECONDS,
+                new LinkedBlockingDeque<>(100));
+        return pool;
+    }
+
+    /**
+     * 将实例注入到RedissLockUtils中  因为RedissonClient是interface接口所以不能注入，通过加载这个类的时候把接口连接这个类
+     * @param redissonClient
+     * @return
+     * @Bean 当作springBean去加载
+     */
+    @Bean
+    RedissLockUtils redissLockUtil(RedissonClient redissonClient) {
+        RedissLockUtils redissLockUtil = new RedissLockUtils();
+        redissLockUtil.setRedissonClient(redissonClient);
+        return redissLockUtil;
+    }
+}
+```
+
+```
+public class RedissLockUtils {
+
+    private static RedissonClient redissonClient;
+
+    public void setRedissonClient(RedissonClient locker) {
+        redissonClient = locker;
+    }
+
+    /**
+     * 根据key获取锁
+     * @param lockKey
+     * @return
+     */
+    public static RLock getLock(String lockKey) {
+        RLock lock = redissonClient.getLock(lockKey);
+        return lock;
+    }
+
+    /**
+     * 尝试获取锁
+     * @param lockKey
+     * @param waitTime 等待时间   单位：秒
+     * lock.tryLock()第二个参数 leaseTime 续期参数,不设置默认等于-1，就是由redission的定时任务timetask去续期 arg=10  单位：秒
+     * @return
+     */
+    public static boolean tryLock(String lockKey, int waitTime) {
+        RLock lock = redissonClient.getLock(lockKey);
+        try {
+            return lock.tryLock(waitTime, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            return false;
+        }
+    }
+
+
+    /**
+     * 尝试获取锁
+     * @param lockKey
+     * @param waitTime 等待时间   单位：秒
+     * @param leaseTime 上锁后自动释放锁时间,不会自动续期   单位：秒
+     * @return
+     */
+    public static boolean tryLock(String lockKey, int waitTime, int leaseTime) {
+        RLock lock = redissonClient.getLock(lockKey);
+        try {
+            return lock.tryLock(waitTime, leaseTime, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            return false;
+        }
+    }
+}
+```
+
+```
+RLock lock = RedissLockUtils.getLock(lockKey);
+if (RedissLockUtils.tryLock(lockKey, waitTime, leaseTime)) {
+    try {
+       // 执行业务逻辑
+    }catch (Exception e){
+    
+    }finally {
+        lock.unlock();
+    }
+}
+```
 
 ## 4.redisson实现分布式锁-高级篇-RedLock
+
+RedissonRedLock 是针对多个redis服务器之间用的全局锁，如果redis为单体，那么用 RLock应该也够了
+
+```java
+Config config1 = new Config();
+config1.useSingleServer().setAddress("redis://192.168.0.1:5378")
+        .setPassword("a123456").setDatabase(0);
+RedissonClient redissonClient1 = Redisson.create(config1);
+
+Config config2 = new Config();
+config2.useSingleServer().setAddress("redis://192.168.0.1:5379")
+        .setPassword("a123456").setDatabase(0);
+RedissonClient redissonClient2 = Redisson.create(config2);
+
+Config config3 = new Config();
+config3.useSingleServer().setAddress("redis://192.168.0.1:5380")
+        .setPassword("a123456").setDatabase(0);
+RedissonClient redissonClient3 = Redisson.create(config3);
+
+String resourceName = "REDLOCK_KEY";
+
+RLock lock1 = redissonClient1.getLock(resourceName);
+RLock lock2 = redissonClient2.getLock(resourceName);
+RLock lock3 = redissonClient3.getLock(resourceName);
+// 向3个redis实例尝试加锁
+RedissonRedLock redLock = new RedissonRedLock(lock1, lock2, lock3);
+boolean isLock;
+try {
+    // isLock = redLock.tryLock();
+    // 500ms拿不到锁, 就认为获取锁失败。10000ms即10s是锁失效时间。
+    isLock = redLock.tryLock(500, 10000, TimeUnit.MILLISECONDS);
+    System.out.println("isLock = "+isLock);
+    if (isLock) {
+        //TODO if get lock success, do something;
+    }
+} catch (Exception e) {
+} finally {
+    // 无论如何, 最后都要解锁
+    redLock.unlock();
+}
+```
+
+唯一**ID**
+
+实现分布式锁的一个非常重要的点就是set的value要具有唯一性，redisson的value是怎样保证value的唯一性呢？答案是**UUID+threadId**。入口在redissonClient.getLock("REDLOCK_KEY")，源码在Redisson.java和RedissonLock.java中：
+
+
+
+```java
+protected final UUID id = UUID.randomUUID();
+String getLockName(long threadId) {
+    return id + ":" + threadId;
+}
+```
+
+**获取锁**
+
+获取锁的代码为redLock.tryLock()或者redLock.tryLock(500, 10000, TimeUnit.MILLISECONDS)，两者的最终核心源码都是下面这段代码，只不过前者获取锁的默认租约时间（leaseTime）是LOCK_EXPIRATION_INTERVAL_SECONDS，即30s：
+
+```java
+<T> RFuture<T> tryLockInnerAsync(long leaseTime, TimeUnit unit, long threadId, RedisStrictCommand<T> command) {
+    internalLockLeaseTime = unit.toMillis(leaseTime);
+    // 获取锁时需要在redis实例上执行的lua命令
+    return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, command,
+              // 首先分布式锁的KEY不能存在，如果确实不存在，那么执行hset命令（hset REDLOCK_KEY uuid+threadId 1），并通过pexpire设置失效时间（也是锁的租约时间）
+              "if (redis.call('exists', KEYS[1]) == 0) then " +
+                  "redis.call('hset', KEYS[1], ARGV[2], 1); " +
+                  "redis.call('pexpire', KEYS[1], ARGV[1]); " +
+                  "return nil; " +
+              "end; " +
+              // 如果分布式锁的KEY已经存在，并且value也匹配，表示是当前线程持有的锁，那么重入次数加1，并且设置失效时间
+              "if (redis.call('hexists', KEYS[1], ARGV[2]) == 1) then " +
+                  "redis.call('hincrby', KEYS[1], ARGV[2], 1); " +
+                  "redis.call('pexpire', KEYS[1], ARGV[1]); " +
+                  "return nil; " +
+              "end; " +
+              // 获取分布式锁的KEY的失效时间毫秒数
+              "return redis.call('pttl', KEYS[1]);",
+              // 这三个参数分别对应KEYS[1]，ARGV[1]和ARGV[2]
+                Collections.<Object>singletonList(getName()), internalLockLeaseTime, getLockName(threadId));
+}
+```
+
+获取锁的命令中，
+
+- **KEYS[1]**就是Collections.singletonList(getName())，表示分布式锁的key，即REDLOCK_KEY；
+- **ARGV[1]**就是internalLockLeaseTime，即锁的租约时间，默认30s；
+- **ARGV[2]**就是getLockName(threadId)，是获取锁时set的唯一值，即UUID+threadId：
+
+------
+
+**释放锁**
+
+释放锁的代码为redLock.unlock()，核心源码如下：
+
+```java
+protected RFuture<Boolean> unlockInnerAsync(long threadId) {
+    // 释放锁时需要在redis实例上执行的lua命令
+    return commandExecutor.evalWriteAsync(getName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
+            // 如果分布式锁KEY不存在，那么向channel发布一条消息
+            "if (redis.call('exists', KEYS[1]) == 0) then " +
+                "redis.call('publish', KEYS[2], ARGV[1]); " +
+                "return 1; " +
+            "end;" +
+            // 如果分布式锁存在，但是value不匹配，表示锁已经被占用，那么直接返回
+            "if (redis.call('hexists', KEYS[1], ARGV[3]) == 0) then " +
+                "return nil;" +
+            "end; " +
+            // 如果就是当前线程占有分布式锁，那么将重入次数减1
+            "local counter = redis.call('hincrby', KEYS[1], ARGV[3], -1); " +
+            // 重入次数减1后的值如果大于0，表示分布式锁有重入过，那么只设置失效时间，还不能删除
+            "if (counter > 0) then " +
+                "redis.call('pexpire', KEYS[1], ARGV[2]); " +
+                "return 0; " +
+            "else " +
+                // 重入次数减1后的值如果为0，表示分布式锁只获取过1次，那么删除这个KEY，并发布解锁消息
+                "redis.call('del', KEYS[1]); " +
+                "redis.call('publish', KEYS[2], ARGV[1]); " +
+                "return 1; "+
+            "end; " +
+            "return nil;",
+            // 这5个参数分别对应KEYS[1]，KEYS[2]，ARGV[1]，ARGV[2]和ARGV[3]
+            Arrays.<Object>asList(getName(), getChannelName()), LockPubSub.unlockMessage, internalLockLeaseTime, getLockName(threadId));
+
+}
+```
 
