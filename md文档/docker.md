@@ -1,0 +1,1 @@
+docker -> docker compose -> k8s
