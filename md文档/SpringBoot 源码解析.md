@@ -517,7 +517,108 @@ protected ConfigurableApplicationContext createApplicationContext() {
 
 获取到对应上下文环境的属性值、也可以往上下文中设置属性和参数
 
-## 自动配置原理@SpringBootApplication注解
+#### 自动配置原理@SpringBootApplication**注解**
 
+## 书籍PDFspring源码
 
+#### DI
 
+##### @Autoware
+
+容器对 Bean
+实例对象的依赖属性注入发生在AbstractAutoWireCapableBeanFactory类
+的populateBean（）  
+
+真正实现属性注入的是 DefaultSingletonBeanRegistry 类的registerDependentBean（）方法  
+
+#### AOP源码
+
+Spring AOP是由接入BeanPostProcessor后置处理器开始的  
+
+##### BeanPostProcessor  
+
+这个Bean后置处理器是一个监听
+器，可以监听容器触发的Bean声明周期事件。向容器注册后置处理器以后，容器中管理的Bean就具备了接收IoC容器回调事件的能力  
+
+**2.AbstractAutowireCapabIeBeanFactory类的doCreateBean（）**方
+法
+BeanPostProcessor后置处理器的调用发生在Spring IoC容器完成Bean
+实例对象的创建和属性的依赖注入之后，在对Spring依赖注入的源码分
+析中我们知道，当应用程序第一次调用getBean（）方法（lazy-init预实
+例化除外）向Spring IoC容器索取指定Bean时，触发Spring IoC容器创建
+Bean实例对象并进行依赖注入。其实真正实现创建 Bean 对象并进行依
+赖注入的方法是
+
+**Bean 实例对象添加 BeanPostProcessor 后置处理器的入口是initializeBean（）  **方法
+
+**3.initiaIizeBean（）方法**  
+
+在AbstractAutowireCapableBeanFactory类中initializeBean（）方法实
+现为容器创建的Bean实例对象添加BeanPostProcessor后置处理器  
+
+4.一个创建AOP代理对象的子类AbstractAutoProxyCreator，该类重写了postProcessAfterInitialization（）  
+
+一个创建AOP代理对象的子类AbstractAutoProxyCreator，该类重写了
+postProcessAfterInitialization（） 
+
+选择代理策略postProcessAfterInitialization（）方法，它调用了一个非常核心的方法—wrapIfNecessary（）  
+
+5.整个过程最终调用的是proxyFactory.getProxy（）方法。到这里，
+proxyFactory有JDK和CGLib两种，我们该如何选择呢？使用
+DefaultAopProxyFactory的createAopProxy（）方法：  
+
+##### AOP - JDK 代理
+
+JdkDynamicAopProxy    -> 
+
+InvocationHandler 是 JDK 动态代理的核心，生成的代理对象的方法
+调用都会委派到 invoke（）方法。  
+
+主要实现思路为：先获取应用到此方法上的拦截器链（Interceptor
+Chain）。如果有拦截器，则应用拦截器，并执行连接点（JoinPoint）；
+如果没有拦截器，则直接反射执行连接点。这里的关键是拦截器链是如
+何获取的，以及它又是如何执行的。下面来逐一分析。  
+
+**拦截器链是通过Advised.getInterceptorsAndDynamicInterceptionAdvice（）  获得**
+
+可以看到，获取拦截器其实是由AdvisorChainFactory的
+**getInterceptorsAndDynamicInterception-Advice（）**方法  
+
+Advised中配置的能够应用到连接点
+（JoinPoint）或者目标对象（Target Object）的Advisor全部被转化成 MethodInterceptor
+
+如果得到的拦截器链为空，则直接反射调用目标方法，否则创建MethodInvocation，调用其proceed（）方法，触发拦截器链的执行  
+
+##### 触发通知
+
+在为AopProxy代理对象配置拦截器的实现中，有一个取得拦截器的
+配置过程，这个过程是由DefaultAdvisorChainFactory 实现的。这个工厂
+类负责生成拦截器链，在它的 **getInterceptorsAndDynamicInterceptionAdvice（）**方法中，有一个适配和注册过程，通过配置Spring 预先设计好的拦截器，加入了AOP实现  
+
+GlobalAdvisorAdapterRegistry类起到了适配器和单例模式的作用，
+提供了一个DefaultAdvisor-AdapterRegistry类来完成各种通知的适配和注册过程
+
+Spring AOP为了实现Advice的织入，设计了特定的拦截器对这些功能进行封装。我们接着看**MethodBeforeAdviceInterceptor**类是如何完成封装的
+
+对目标对象的增强是通过拦截器实现的  
+
+#### spring MVC源码
+
+容器初始化时会建立所有URL和Controller中方法的对应关系，保存
+到Handler Mapping中，用户请求时根据请求的 URL 快速定位到
+Controller 中的某个方法。在 Spring 中先将 URL 和Controller的对应关系
+保存到Map＜url， Controller＞中。 Web容器启动时会通知Spring初始化
+容器（加载Bean的定义信息和初始化所有单例Bean），然后Spring
+MVC会遍历容器中的Bean，获取每一个Controller中的所有方法访问的
+URL，将URL和Controller保存到一个Map中  
+
+初始化
+
+首先找到DispatcherServlet类，寻找init（）方法。我们发现init（）方法其实在父类HttpServletBean中 
+
+-> initServletBean（）  
+
+上面这段代码主要就是初始化IoC容器，最终会调用refresh（）方
+法，前面的章节对IoC容器的初始化已经讲得很详细，在此不再赘述。
+我们看到，在IoC容器初始化之后，又调用了onRefresh（）方法，它是
+在DisptcherServlet类中实现的，来看源码：  
