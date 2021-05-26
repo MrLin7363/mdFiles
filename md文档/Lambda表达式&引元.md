@@ -53,3 +53,53 @@ tagsCreateCmd.getTageOptionValueList().stream().filter(
                                        (s, a) -> s + ", " + a)); // BinaryOperator
 ```
 
+```
+// 根据快递表的id字段去映射成id字段的 List
+List<Long> expressIds = expresses.stream().map(Express::getId).collect(Collectors.toList());
+```
+
+```
+// 如果能确定expressId是唯一的可以这么写，不会建重复
+Map<Long, List<Long>> expressTradeRelateMap = expressTradeRelates.stream()
+        .collect(Collectors.toMap(ExpressTradeRelate::getExpressId, ExpressTradeRelate::getTradeIds));
+```
+
+```
+// 这个会取第一个key作map，如果后面有重复或者不同的，则只取第一个元素作为map的value
+        nameDescMap = users.stream().collect(Collectors.toMap(MyUser::getName,
+                MyUser::getDesc,(k,v)-> k));
+```
+
+```
+// shipmentGoodsList 是个list，取里面的List<Long> tradeId     去重 
+shipmentDetail.setTradeIds(shipmentGoodsList.stream().map(ShipmentGoodsDO::getTradeId).distinct().collect(Collectors.toList()));
+```
+
+    public class ShipmentGoodsDO {
+    /**
+     * 发货单号
+     */
+    private String shipmentCode;
+    /**
+     * 交易单号
+     */
+    private Long tradeId;
+    
+    private Long orderId;// '订单号'
+    ......
+    }
+```
+List<ShipmentGoodsDO> shipmentGoodsDOList = orderMapper.selectShipmentGoodsByTradeId(tradeId, statusEnum.getCode());
+// 根据里面的shipmentCode 分为  < shipmentCode,List<ShipmentGoodsDO> >
+Map<String, List<ShipmentGoodsDO>> shipmentGoodsMap = shipmentGoodsDOList.stream()
+                .collect(Collectors.groupingBy(ShipmentGoodsDO::getShipmentCode));
+                
+// 这个会取第一个key作map，如果后面有重复或者不同的，则只取第一个元素作为map的value   <shipmentCode,consigneeId>
+Map<String, Long> shipmentConsigneeMap = shipmentGoodsMap.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().get(0).getConsigneeId(), (c1, c2) -> c1));
+        
+// 
+List<ConsigneeDO> consigneeDOS = consigneeMapper.selectByIdList(new ArrayList<>(shipmentConsigneeMap.values()));
+Map<Long, ConsigneeDO> consigneeDOMap = consigneeDOS.stream().collect(Collectors.toMap(ConsigneeDO::getId,Function.identity()));
+```
+
