@@ -951,6 +951,8 @@ public void bussiness() {
 
 ## 3.redisson实现分布式锁-基础篇
 
+官方文档：  https://github.com/redisson/redisson/wiki/%E7%9B%AE%E5%BD%95
+
 ### Redis几种架构
 
 Redis发展到现在，几种常见的部署架构有：
@@ -1106,6 +1108,17 @@ if (RedissLockUtils.tryLock(lockKey, waitTime, leaseTime)) {
     }
 }
 ```
+
+### watchdog机制
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20201119155758770.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzM1ODQzMDk1,size_16,color_FFFFFF,t_70#pic_center)
+
+ watchdog机制。找了很多资料，最后基本弄明白了 watchdog的使用和 原理。
+
+首先watchdog的具体思路是 加锁时，默认加锁 30秒，每10秒钟检查一次，如果存在就重新设置 过期时间为30秒。
+
+然后设置默认加锁时间的参数是 lockWatchdogTimeout（监控锁的看门狗超时，单位：毫秒）
+
 
 ## 4.redisson实现分布式锁-高级篇-RedLock
 
