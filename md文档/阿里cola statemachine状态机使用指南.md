@@ -11,6 +11,8 @@ github:
 
 https://blog.csdn.net/significantfrank/article/details/104996419
 
+简单例子：https://github.com/shxz130/statemachine    博客讲解： https://www.jianshu.com/p/8def04b34b3c
+
 概念：
 State：状态
 
