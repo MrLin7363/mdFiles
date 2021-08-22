@@ -103,7 +103,7 @@ docker run -id --name=c2 centos:7 /bin/bash
 
 **退出容器**
 
-exit 
+exit;   exit是退出xshell 注意
 
 **进入容器**
 
@@ -119,7 +119,9 @@ docker stop c2
 
 **删除**
 
-docker rm c2 容器ID/容器名称
+docker rm  c2 容器ID/容器名称
+
+docker rm -f c2 容器ID/容器名称   删除正在运行的容器
 
 docker rm 'docker ps -a' 删除所有容器
 
@@ -170,7 +172,7 @@ docker pull mysql:8.0
 cd / 
 
 ```
-docker run -id --name=mysql -p 3307:3306    -v /root/mysql/conf:/etc/mysql/conf.d         -v /root/mysql/logs:/logs        -v /root/mysql/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123456 mysql:8
+docker run -id --name=mysql -p 3307:3306    -v /root/mysql/conf:/etc/mysql/conf.d         -v /root/mysql/logs:/logs        -v /root/mysql/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123456 mysql:8 /bin/bash
 ```
 
 映射宿主机3307端口 到容器3306端口，外部通过3307连接
@@ -188,16 +190,20 @@ mysql -h 1.14.195 -P3307 -uroot -p
 ##### Nginx部署
 
 ```
-docker run -id --name nginx -p 80:80    -v $pwd/nginx/nginx.conf:/etc/nginx/nginx.conf   -v $pwd/nginx/logs:/var/log/nginx       -v $pwd/nginx/html:/usr/share/nginx/html   nginx
+docker run -id --name nginx -p 80:80    -v /root/nginx/conf/nginx.conf:/etc/nginx/nginx.conf   -v /root/nginx/logs:/var/log/nginx       -v /root/nginx/html:/usr/share/nginx/html -v /root/nginx/conf/conf.d:/etc/nginx/conf.d  nginx  /bin/bash
 ```
 
-容器的路径是安装好nginx默认的目录，想要宿主机挂载一些配置文件就先写好nginx.conf等
+容器的路径是**安装好nginx默认的目录**，想要宿主机挂载一些配置文件就先写好nginx.conf等
+
+nginx.conf 拷贝原始nginx的结构
 
 分别 配置目录，日志目录
 
+/bin/bash 不能丢
+
 $PWD/nginx.conf  $PWD当前目录
 
-http://1.14.195:80   welcome to nginx!
+http://1.14.195.48:80/ welcome to nginx!
 
 可以修改 index.html 然后换成自己的展示页面
 
@@ -223,9 +229,9 @@ docker run -id --name redis -p 6379:6379 redis /bin/bash
 
 redis-cli.exe -h 1.14.195 -p 6379
 
-#### 八、docker file
+#### 八、docker file-构建镜像
 
-发布spring-boot项目
+##### 1.发布spring-boot项目
 
 1.maven package 打包项目
 
@@ -272,6 +278,83 @@ docker run -id -p 9000:8080 app
 
 8080为springboot访问的端口
 
+##### 2.eruekaspring-boot项目安装
+
+```
+maven package
+分别打包eureka-server   product-server 
+java -jar eureka-server.jar
+java-jar product-server.jar
+和在idea 启动一样效果
+```
+
+2.jar上传到服务器-sftp
+
+```
+sftp:/root/software/docker> put eureka_server-1.0-SNAPSHOT.jar
+sftp:/root/software/docker> put product_server-1.0-SNAPSHOT.jar
+```
+
+3.docker_file
+
+root/software/docker_file_eureka
+
+```
+FROM java:8
+MAINTAINER chenjunlin
+ADD eureka_server-1.0-SNAPSHOT.jar  start.jar
+CMD java -jar start.jar
+```
+
+4.构建镜像  
+
+eruka_app 镜像名称
+
+```
+docker build -f ./docker_file_eureka -t  eureka_app .
+```
+
+-f路径名
+. 上下文路径，将文件目录下打包给镜像，当前目录不易过多文件
+
+5.运行容器
+
+eureka项目访问是 8002端口，容器映射出来也8000，不过xshell连接服务器就是8000端口冲突换一个
+
+```
+docker run -id --name=eureka_server -p 8002:8000 eureka_app
+```
+
+启动后约2分钟部署完
+
+http://1.14.195.48:8000/   访问到eruka服务
+
+curl http://1.14.195.48:8002/  直接在容器上访问也行
+
+6.启动product-server 容器，目前这个项目依赖mysql，所以单独启动运行不起来
+
+一样的流程，查看是否注册
+
+```
+docker run -id --name=procut_server -p 9011:9011 product_app
+```
+
+```
+http://1.14.195.48:9011/product/1
+```
+
+##### 3.构建自定义的centos容器
+
+因为构建的容器一般没有 vim 编辑器，如nginx要在挂载目录写index.html
+
+```
+FROM centos:7
+MAINTAINER chenjunlin
+RUN yum install -y vim
+WORKDIR /usr
+CMD /bin/bash
+```
+
 #### 九、服务编排-compose
 
 ##### 安装
@@ -284,15 +367,103 @@ docker run -id -p 9000:8080 app
 
 docker-compose -version
 
-##### 使用
+##### 编排nginx+spring-boot项目
 
 如上面的app容器，需要nginx,mysql,redis容器
 
-vim 
+此处以 eruka_server + nginx 为例
+
+1.创建docker-compose 目录
+
+2.编写docker-compose.yml文件
+
+```
+version: '1'
+services:
+  nginx:
+    image: nginx
+    ports:
+      - 80:80
+    links:
+      - eureka_app
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+  eureka_app:
+    image: eureka_app
+    expose:
+      - "8080"
+```
+
+在conf.d目录下编写  nginx.conf  加上
+
+```
+ server {
+        listen       80;
+        server_name  nginx;
+        
+        access_log  off;
+
+        location / {
+            proxy_pass  http://eruka_app:8080;
+        }
+```
+
+
+
+#### 十、docker私有仓库
+
+##### 1.私有仓库搭建
+
+**拉取仓库镜像**
+
+docker pull registry
+
+**启动私有仓库容器**
+
+docker run -id --name registry -p 5000:5000 registry
+
+http://服务器IP:5000/v2/_catalog  看到{"repositories":[]}搭建成功
+
+**修改daemon.json**
+
+vim /etc/docker/daemon.json
+
+添加docker信任私有仓库
+
+```
+{"insecure-registries":"服务器ID:5000"}
+```
+
+重启docker
+
+systemctl restart docker
+
+docker start registry
+
+##### 2.将镜像上传至私有仓库
+
+标记镜像为私有仓库镜像
+
+```
+docker tag centos:7 私有仓库IP:5000/centos:7
+```
+
+上传标记的镜像
+
+docker push 私有仓库IP:5000/centos:7
+
+##### 3.从私有仓库拉取镜像
+
+docker rmi 原先上传的容器
+
+docker pull  服务器IP:5000/centos:7
+
 
 #### 十、docker常见问题
 
-usr/bin/docker permission denied 
+###### usr/bin/docker permission denied 
+
+docker运行指令如果不行，就会重置隐藏属性
 
 这个文件没有删除修改权限
 
@@ -311,5 +482,37 @@ chattr -ia docker 取消文件属性限制
 
 chmod 777 docker  赋予文件读写执行权限
 
+chmod u=rwxr,g=xr,o=x docker  上面777权限太高容易被恢复
+
 docker就可访问
+
+dockerd也要赋予权限否则启动不了docker
+
+###### 容器删除端口释放
+
+重启docker会将所有容器关闭，但是端口映射的代理不会关闭，下次启动容器会端口被占用
+
+`docker-proxy`作用是提供端口映射，以便外部可以访问容器内部
+
+###### systemctl start docker启动不起来
+
+/root/usr/bin/dockerd  这个文件权限没赋予
+
+###### 删除容器停止等不行
+
+systemctl restart docker
+
+可能是挂载目录没有取消关联，重启docekr默认关闭容器
+
+###### docker-proxy
+
+exec: "docker-proxy": executable file not found in $PATH
+
+/root/usr/bin docker-proxy文件权限没了
+
+###### 重启docker后
+
+docker restart 容器名
+
+不要用docker start 容器名
 
