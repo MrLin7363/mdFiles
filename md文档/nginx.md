@@ -39,5 +39,24 @@ http {
 }
 ```
 
+default.conf
 
+```
+server {
+        listen       8080;
+        server_name  localhost;
+
+        access_log  /var/log/nginx/access.log  main;
+
+        location / {
+            root   /usr/share/nginx/html; # 或者绝对路径 D:/nginx-1.18.0/html
+            index  index.html;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+ }
+```
 

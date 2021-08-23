@@ -91,13 +91,15 @@ docker ps 查看正在运行的容器
 
 **创建容器**
 
-docker run -it --name=c1 centos:7 /bin/bash
+docker run  --name=c1  -it centos:7 /bin/bash
 
 centos:7 镜像和版本
 
--it 交互式容器
+- **-i:** 以交互模式运行容器，通常与 -t 同时使用；  -i  必须加 /bin/bash
+- **-t:** 为容器重新分配一个伪输入终端，通常与 -i 同时使用；
+- **-d:** 后台运行容器，并返回容器ID；
 
-docker run -id --name=c2 centos:7 /bin/bash
+docker run  --name=c2  -id centos:7 /bin/bash
 
 -id 后台运行，exit退出不会关闭容器
 
@@ -137,6 +139,8 @@ docker inspect c2
 
 宿主机内部各个容器可以通过数据卷挂载进行数据交互
 
+-i /bin/bash 必须加，交互式容器 
+
 **配置数据卷**
 
 目录必须是绝对路径
@@ -172,7 +176,7 @@ docker pull mysql:8.0
 cd / 
 
 ```
-docker run -id --name=mysql -p 3307:3306    -v /root/mysql/conf:/etc/mysql/conf.d         -v /root/mysql/logs:/logs        -v /root/mysql/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123456 mysql:8 /bin/bash
+docker run --name=mysql -p 3307:3306    -v /root/mysql/conf:/etc/mysql/conf.d         -v /root/mysql/logs:/logs        -v /root/mysql/data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123456  -id mysql:8 /bin/bash
 ```
 
 映射宿主机3307端口 到容器3306端口，外部通过3307连接
@@ -189,11 +193,27 @@ mysql -h 1.14.195 -P3307 -uroot -p
 
 ##### Nginx部署
 
+/bin/bash 一般和 -i 配合使用，不然容器已创建就exit
+
 ```
-docker run -id --name nginx -p 80:80    -v /root/nginx/conf/nginx.conf:/etc/nginx/nginx.conf   -v /root/nginx/logs:/var/log/nginx       -v /root/nginx/html:/usr/share/nginx/html -v /root/nginx/conf/conf.d:/etc/nginx/conf.d  nginx  /bin/bash
+单独的nginx   注意最后不要加 /bin/bash  会把端口映射关闭，因为/bin/bash就是80端口
+docker run --name nginx2 -p 8080:80 -id nginx
+或者 docker run --name nginx2 -p 8080:80 -d nginx
+curl localhost:8080  即可访问
+docker run --name nginx25 -p 8027:80 -id nginx /bin/bash
+docker run --name nginx26 -p 8028:80 -itd nginx /bin/bash
+访问不了80端口
 ```
 
-容器的路径是**安装好nginx默认的目录**，想要宿主机挂载一些配置文件就先写好nginx.conf等
+```
+docker run  --name=nginx19 -p 8099:80    -v /root/nginx/conf/nginx.conf:/etc/nginx/nginx.conf   -v /root/nginx/logs:/var/log/nginx       -v /root/nginx/html:/usr/share/nginx/html -v /root/nginx/conf/conf.d:/etc/nginx/conf.d  -id nginx /bin/bash 
+```
+
+docker rm $(docker ps -a -q)  一次删除所有停止的容器。
+
+kill -9 
+
+容器的路径是**安装好nginx默认的目录**，想要宿主机挂载一些配置文件就先写好nginx.conf,default.conf等
 
 nginx.conf 拷贝原始nginx的结构
 
@@ -203,14 +223,14 @@ nginx.conf 拷贝原始nginx的结构
 
 $PWD/nginx.conf  $PWD当前目录
 
-http://1.14.195.48:80/ welcome to nginx!
+http://1.14.195:80/ welcome to nginx!
 
 可以修改 index.html 然后换成自己的展示页面
 
 ##### Tomcat部署
 
 ```
-docker run -id --name tomcat -p 8080:8080 -v /root/tomcat:/usr/local/tomcat/webapps tomcat /bin/bash
+docker run --name tomcat -p 8080:8080 -v /root/tomcat:/usr/local/tomcat/webapps tomcat  -id /bin/bash
 ```
 
 http://1.14.195:8080
@@ -222,7 +242,7 @@ http://1.14.195:8080/test/index.html
 ##### redis部署
 
 ```
-docker run -id --name redis -p 6379:6379 redis /bin/bash
+docker run --name redis -p 6379:6379 -id redis /bin/bash
 ```
 
 使用外部机器连接redis，进入redis 目录下
@@ -516,3 +536,8 @@ docker restart 容器名
 
 不要用docker start 容器名
 
+###### nginx启动访问不了80端口问题
+
+ Recv failure: Connection reset by peer
+
+/bin/bash   docker run 的时候如果加这个命令会把http端口映射关掉
