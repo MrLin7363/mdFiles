@@ -2,6 +2,21 @@ MySQL-常见问题积累
 
 #### mysql - Json 字段属性搜索
 
+1.针对 JSON字符串
+
+使用 json_extract 函数查询，json_extract(字段, "$.json属性")
+
+2.针对 JSON数组
+
+根据json数组查询，用 `JSON_CONTAINS(字段, JSON_OBJECT('json属性', "内容"))`
+
+```
+select * from table and JSON_CONTAINS(json_data, JSON_OBJECT(#{queryParam.key},#{queryParam.value}))
+json_data 是mysql json 属性的字段
+select * from table and JSON_CONTAINS(json_data, JSON_OBJECT('width','43'))
+搜索json_data中含有 width = 43 的数据
+```
+
 #### SQL
 
 delete使用别名时，必须在前面加入别名
