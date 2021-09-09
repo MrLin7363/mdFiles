@@ -4,6 +4,12 @@ MySQL-常见问题积累
 
 1.针对 JSON字符串
 
+ 字段->'$.json属性'进行查询条件
+
+```
+select * from table where data_json->'$.id' = 142;
+```
+
 使用 json_extract 函数查询，json_extract(字段, "$.json属性")
 
 2.针对 JSON数组
