@@ -521,7 +521,7 @@ ASSERT cc.number IS UNIQUE
 
 ## 三、代码运用
 
-### 1. spring data neo4j
+### 1. spring data neo4j  5.x
 
 参考spring官网
 
@@ -529,11 +529,22 @@ ASSERT cc.number IS UNIQUE
 <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-neo4j</artifactId>
-             <version>2.7.0</version>
+             <version>2.3.6.RELEASE</version>
 </dependency>
 ```
 
 新版本替换了下面的注解
+
+```
+    <dependency>
+      <groupId>org.springframework.data</groupId>
+      <artifactId>spring-data-neo4j</artifactId>
+      <version>5.3.5.RELEASE</version>
+      <scope>compile</scope>
+    </dependency>
+```
+
+使用5.x版本 是下面的Old 如果是6.x版本关系不好理解，且官网文档写不清楚关系如何连接
 
 | Old                                       | New                                                         |
 | :---------------------------------------- | :---------------------------------------------------------- |
@@ -543,36 +554,232 @@ ASSERT cc.number IS UNIQUE
 | `org.neo4j.ogm.annotation.Property`       | `org.springframework.data.neo4j.core.schema.Property`       |
 | `org.neo4j.ogm.annotation.Relationship`   | `org.springframework.data.neo4j.core.schema.Relationship`   |
 
-```
-public interface DeptRepository extends Neo4jRepository<Dept,Long>
-```
+##### (1) node
 
 ```
+package com.lin.neo4j.domain;
+
+import lombok.Builder;
 import lombok.Data;
-import org.springframework.data.neo4j.core.schema.GeneratedValue;
-import org.springframework.data.neo4j.core.schema.Id;
-import org.springframework.data.neo4j.core.schema.Node;
-import org.springframework.data.neo4j.core.schema.Property;
+import org.neo4j.ogm.annotation.GeneratedValue;
+import org.neo4j.ogm.annotation.Id;
+import org.neo4j.ogm.annotation.NodeEntity;
+import org.neo4j.ogm.annotation.Property;
 
-@Node("Dept") // 标签：默认就是类名
 @Data
+@Builder
+@NodeEntity("Dept") // 标签：默认就是类名
 public class Dept {
     @Id // 声明主键
     @GeneratedValue  // 声明该字段为neo4j自动生成的<id>映射的字段
     private Long id;
 
-    @Property("deptno") // 如果定义属性名称不一样可用
+    @Property("deptno") // 如果名称不一样可用
     private Integer deptno;
 
     private String dname;
 
     private String location;
-    
-	@Relationship(type = "ACTED_IN", direction = Direction.INCOMING) 
-	private List<Roles> actorsAndRoles;
+}
+```
 
-	@Relationship(type = "DIRECTED", direction = Direction.INCOMING)
-	private List<PersonEntity> directors = new ArrayList<>();
+```
+@Data
+@NodeEntity
+public class Person {
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String name;
+}
+```
+
+```
+import lombok.Data;
+import org.neo4j.ogm.annotation.EndNode;
+import org.neo4j.ogm.annotation.GeneratedValue;
+import org.neo4j.ogm.annotation.Id;
+import org.neo4j.ogm.annotation.RelationshipEntity;
+import org.neo4j.ogm.annotation.StartNode;
+
+/**
+ * 部门关系
+ */
+@Data
+@RelationshipEntity(type = "DeptRelationShip")
+public class DeptRelationShip {
+    @Id
+    @GeneratedValue
+    private Long id;
+
+    private String name;
+
+    @StartNode
+    private Dept startNode;
+
+    @EndNode
+    private Person endNode;
+}
+```
+
+##### (2) repository
+
+```
+import com.lin.neo4j.domain.Dept;
+
+import org.springframework.data.neo4j.annotation.Query;
+import org.springframework.data.neo4j.repository.Neo4jRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface DeptRepository extends Neo4jRepository<Dept,Long> {
+
+    @Query(value = "create (d:Dept {deptno:{0},dname:{1},location:{2}})")
+    void create(Integer deptno, String dname, String location);
+
+    Dept findByDeptno(Integer deptno);
+
+    List<Dept> findByDeptnoOrderByDeptnoAsc(Integer deptno);
+
+}
+
+@Repository
+public interface DeptRelationRepository extends Neo4jRepository<DeptRelationShip, Long> {
+
+}
+```
+
+```
+  List<Person> findByEmailAddressAndLastname(EmailAddress emailAddress, String lastname);
+
+  // Enables the distinct flag for the query
+  List<Person> findDistinctPeopleByLastnameOrFirstname(String lastname, String firstname);
+  List<Person> findPeopleDistinctByLastnameOrFirstname(String lastname, String firstname);
+
+  // Enabling ignoring case for an individual property
+  List<Person> findByLastnameIgnoreCase(String lastname);
+  // Enabling ignoring case for all suitable properties
+  List<Person> findByLastnameAndFirstnameAllIgnoreCase(String lastname, String firstname);
+
+  // Enabling static ORDER BY for a query
+  List<Person> findByLastnameOrderByFirstnameAsc(String lastname);
+  List<Person> findByLastnameOrderByFirstnameDesc(String lastname);
+```
+
+```
+Page<User> findByLastname(String lastname, Pageable pageable);
+
+Slice<User> findByLastname(String lastname, Pageable pageable);
+
+List<User> findByLastname(String lastname, Sort sort);
+
+List<User> findByLastname(String lastname, Pageable pageable);
+
+
+Sort sort = Sort.by("firstname").ascending()
+  .and(Sort.by("lastname").descending());
+```
+
+limit
+
+```
+User findFirstByOrderByLastnameAsc();
+
+User findTopByOrderByAgeDesc();
+
+Page<User> queryFirst10ByLastname(String lastname, Pageable pageable);
+
+Slice<User> findTop3ByLastname(String lastname, Pageable pageable);
+
+List<User> findFirst10ByLastname(String lastname, Sort sort);
+
+List<User> findTop10ByLastname(String lastname, Pageable pageable);
+```
+
+组合结果
+
+```
+interface PersonRepository extends Repository<Person, Long> {
+  Streamable<Person> findByFirstnameContaining(String firstname);
+  Streamable<Person> findByLastnameContaining(String lastname);
+}
+
+Streamable<Person> result = repository.findByFirstnameContaining("av")
+  .and(repository.findByLastnameContaining("ea"));
+```
+
+##### (3) operate实践
+
+```
+@SpringBootTest(classes = Application.class)
+@RunWith(SpringRunner.class)
+public class NodeTest {
+    @Autowired
+    private DeptRepository deptRepository;
+
+    @Test
+    public void testCreate() {
+       deptRepository.create(6,"技术部","深圳");
+       deptRepository.save(Dept.builder().deptno(3).dname("人力资源").location("广州").build());
+    }
+
+    @Test
+    public void testDelete() {
+        // 这里的删除有关系也能删除掉
+        deptRepository.deleteById(40L);
+    }
+
+    @Test
+    public void testDeptQuery() {
+        final Iterable<Dept> all = deptRepository.findAll();
+        all.forEach(e-> System.out.println(e));
+        System.out.println(deptRepository.findById(40L));
+    }
+
+    @Test
+    public void testDeptNativeQuery() {
+        Dept deptn = deptRepository.findByDeptno(4);
+        System.out.println(deptn);
+        System.out.println(deptRepository.findByDeptno(4));
+    }
+}
+```
+
+```
+@SpringBootTest(classes = Application.class)
+@RunWith(SpringRunner.class)
+public class RelationTest {
+    @Autowired
+    private DeptRepository deptRepository;
+
+    @Autowired
+    private DeptRelationRepository deptRelationRepository;
+
+    @Test
+    public void testRelation() {
+        DeptRelationShip deptRelationShip = new DeptRelationShip();
+        deptRelationShip.setName("归属");
+
+        Dept dept = deptRepository.findById(86L).orElse(null);
+        deptRelationShip.setStartNode(dept);
+
+        Person person = new Person();
+        person.setName("霖");
+//        person.setId(106L);
+        deptRelationShip.setEndNode(person);
+
+        // 这里的保存关系 会连带保存person新节点，如果person设置id且该id已存在，则不新建person节点
+        deptRelationRepository.save(deptRelationShip);
+    }
+
+    @Test
+    public void testRelationQuery() {
+        Iterable<DeptRelationShip> deptRelationAll = deptRelationRepository.findAll();
+        deptRelationAll.forEach(e-> System.out.println(e));
+    }
 }
 ```
 
