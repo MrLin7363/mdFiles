@@ -57,7 +57,11 @@ public class LocalCacheUtil {
             return localCache;
         }
     }
-
+    
+    public static boolean existCathe(String cacheKey) {
+        return cacheContainer.get(cacheKey) != null ? true : false;
+    }
+    
     public static void main(String[] args) {
         String key = "instance_id";
 
@@ -80,6 +84,16 @@ public class LocalCacheUtil {
             } catch (ExecutionException | InterruptedException ex) {
                 System.out.println(ex.getCause());
             }
+        }
+        
+        // 测试是否存在
+            for (int i = 0; i < 5; i++) {
+            if (LocalCacheUtil.existCathe("versionId")) {
+                System.out.println("not");
+                continue;
+            }
+            System.out.println("sync");
+            LocalCacheUtil.getLocalCache("versionId", 1, 1, 2, Runtime.getRuntime().availableProcessors());
         }
     }
 
