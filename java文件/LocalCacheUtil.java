@@ -58,8 +58,16 @@ public class LocalCacheUtil {
         }
     }
     
-    public static boolean existCathe(String cacheKey) {
-        return cacheContainer.get(cacheKey) != null ? true : false;
+    /**
+     * 测试是否存在某个key,放到concurrentHashMap里的cathe不会过期==null,所以判断cathe的value是否为null
+     */
+    public static boolean existVersionSyncCathe(String cacheKey) throws ExecutionException {
+        final Cache<String, Object> stringObjectCache = cacheContainer.get(cacheKey);
+        if (stringObjectCache == null) {
+            return false;
+        }
+        String value = (String)stringObjectCache.get(cacheKey, () -> "not_sync");
+        return value.equals("sync");
     }
     
     public static void main(String[] args) {
@@ -86,14 +94,17 @@ public class LocalCacheUtil {
             }
         }
         
-        // 测试是否存在
-            for (int i = 0; i < 5; i++) {
-            if (LocalCacheUtil.existCathe("versionId")) {
+        for (int i = 0; i < 10; i++) {
+            Thread.sleep(1000L);
+            if (LocalCacheUtil.existVersionSyncCathe("versionId")) {
                 System.out.println("not");
                 continue;
             }
+            final Cache<String, Object> versionCathe = LocalCacheUtil.getLocalCache("versionId", 2, 1, 2,
+                Runtime.getRuntime().availableProcessors());
+            versionCathe.put("versionId","sync");
             System.out.println("sync");
-            LocalCacheUtil.getLocalCache("versionId", 1, 1, 2, Runtime.getRuntime().availableProcessors());
+            // 执行业务....
         }
     }
 
