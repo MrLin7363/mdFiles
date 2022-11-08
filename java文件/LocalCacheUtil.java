@@ -21,7 +21,6 @@ public class LocalCacheUtil {
             return localCache;
         }
         synchronized (LocalCacheUtil.cacheContainer) {
-            if (null == localCache) {
                 //recordStats开启缓存状况统计,expireAfterAccess过期时间,initialCapacity初始化大小,maximumSize最大值
                 localCache = CacheBuilder.newBuilder()
                     .expireAfterWrite(duration, TimeUnit.MINUTES)
@@ -31,7 +30,6 @@ public class LocalCacheUtil {
                     .recordStats()
                     .build();
                 cacheContainer.put(cacheKey, localCache);
-            }
             return localCache;
         }
     }
@@ -44,7 +42,6 @@ public class LocalCacheUtil {
         }
         synchronized (LocalCacheUtil.cacheContainer) {
             log.info("新建Cathe缓存");
-            if (null == localCache) {
                 localCache = CacheBuilder.newBuilder()
                     .expireAfterWrite(3L, TimeUnit.SECONDS)
                     .initialCapacity(50)
@@ -53,7 +50,6 @@ public class LocalCacheUtil {
                     .recordStats()
                     .build();
                 cacheContainer.put(cacheKey,localCache);
-            }
             return localCache;
         }
     }
