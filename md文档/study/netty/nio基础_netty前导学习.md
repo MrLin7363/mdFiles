@@ -1389,18 +1389,113 @@ public class MultiThreadServer {
 - 等待数据阶段     等待网络接收到数据
 - 复制数据阶段     从网卡复制到系统
 
-
-
 - 阻塞IO
+
+```mermaid
+sequenceDiagram
+	Note over 用户程序空间: 用户进程
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+    Note over 用户程序空间: 用户进程
+```
+
 - 非阻塞IO
 
-多次read等，有数据后，阻塞复制数据阶段，然后返回数据。    多次用户空间和内核空间切换
+多次read等待数据，有数据后，阻塞复制数据阶段，然后返回数据。    多次用户空间和内核空间切换
+
+```mermaid
+sequenceDiagram
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间-->>-用户程序空间: 
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间-->>-用户程序空间: 
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间-->>-用户程序空间: 
+        用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+```
 
 - 多路复用
 
-
+```mermaid
+sequenceDiagram
+	Note over 用户程序空间: 用户进程
+    用户程序空间->>+Linux 内核空间: select
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间-->>-用户程序空间: 
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+    Note over 用户程序空间: 用户进程
+```
 
 - 异步IO
+
+```mermaid
+sequenceDiagram
+	Note over 用户程序空间: 用户进程
+    用户程序空间->>+Linux 内核空间: thread1
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间-->>-用户程序空间: 回调方法(参数)
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>用户程序空间: 回调方法(真正结果) thread2
+    Note over 用户程序空间: 用户进程
+```
+
 - 阻塞 IO 多channel 
+
+```mermaid
+sequenceDiagram
+	Note over 用户程序空间: 用户进程
+    用户程序空间->>+Linux 内核空间: read
+    Note right of Linux 内核空间: channel 1
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+       用户程序空间->>+Linux 内核空间: read
+       Note right of Linux 内核空间: channel 2
+    Linux 内核空间->>Linux 内核空间: 等待连接
+    Linux 内核空间->>Linux 内核空间: 建立连接
+    Linux 内核空间-->>-用户程序空间: 
+           用户程序空间->>+Linux 内核空间: read
+           Note right of Linux 内核空间: channel 3
+    Linux 内核空间->>Linux 内核空间: 等待数据
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+    Note over 用户程序空间: 用户进程
+```
+
 - 多路复用  多channel
+
+```mermaid
+sequenceDiagram
+	Note over 用户程序空间: 用户进程
+    用户程序空间->>+Linux 内核空间: select
+    Linux 内核空间->>Linux 内核空间: 等待事件
+    Linux 内核空间-->>-用户程序空间: c1 read c2 accpet c2 read
+    用户程序空间->>+Linux 内核空间: 
+    Linux 内核空间->>Linux 内核空间: 建立连接
+    Linux 内核空间-->>-用户程序空间: 
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+    用户程序空间->>+Linux 内核空间: read
+    Linux 内核空间->>Linux 内核空间: 复制数据
+    Linux 内核空间-->>-用户程序空间: 
+    Note over 用户程序空间: 用户进程
+```
+
+#### 5.3 零拷贝
+
+```mermaid
+flowchart LR
+    Start --> Stop
+```
 
