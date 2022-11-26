@@ -52,7 +52,9 @@ redis集群数据获取原理：
 
  Redirected to slot [10313] located at 123.342.234.23:6379
 
-### 3. 常用指令
+## 二、数据结构
+
+### 1. 常用指令
 
 连接集群  redis-cli -h 7.225.150.145 -p 6379 -a password -c
 
@@ -65,7 +67,7 @@ redis集群数据获取原理：
 4. 查看指定key所在slot的值，cluster keyslot key 命令
 
   ```
-  cluster keyslot "keyname"
+cluster keyslot "keyname"
   ```
 
   原文链接：https://blog.csdn.net/yzf279533105/article/details/118333545
@@ -98,7 +100,7 @@ get "keyname"
 
 13. del 删除 key
 
-14. INCR命令用于实现Redis计数器
+14. INCR命令用于实现Redis**计数器**
 
     - `INCRBY key increment`：将key对应的数字**加**increment
     - `DECR key`：对key对应的数字做**减1**操作
@@ -130,11 +132,89 @@ OK
 (integer) 1
 ```
 
-## 二、数据结构
+### 2. spring-data-代码实现部分指令
 
-### 1. HyperLogLog
+分布式锁
 
-#### 1.1 业务场景
+```
+    public Boolean lock(String key, long expire) {
+        String lockKey = DEFAULT_LOCK_KEY + key;
+        return redisTemplate.execute((RedisCallback<Boolean>) connection -> {
+            long expaireAt = System.currentTimeMillis() + expire + 1;
+            Boolean acquire = connection.setNX(lockKey.getBytes(StandardCharsets.UTF_8),
+                String.valueOf(expaireAt).getBytes(StandardCharsets.UTF_8));
+            if (acquire) {
+                return Boolean.TRUE;
+            } else {
+                byte[] value = connection.get(lockKey.getBytes(StandardCharsets.UTF_8));
+                if (Objects.nonNull(value) && value.length > 0) {
+                    long expaireTime = Long.parseLong(new String(value));
+                    if (expaireTime < System.currentTimeMillis()) {
+                        byte[] oldValue = connection.getSet(lockKey.getBytes(StandardCharsets.UTF_8),
+                            String.valueOf(System.currentTimeMillis() + expire + 1).getBytes(StandardCharsets.UTF_8));
+                        return Long.parseLong(new String(oldValue)) < System.currentTimeMillis();
+                    }
+                }
+            }
+            return Boolean.FALSE;
+        });
+    }
+```
+
+```
+org.springframework.data.redis.connection;
+```
+
+keys * ... 
+
+```
+@GetMapping(value = "/patternDelete")
+    public Set<String> patternDeleteCache(String pattern) {
+        Set<String> deleteKeys = (Set<String>) redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+            ScanOptions scanOptions = ScanOptions.scanOptions().match("*" + pattern + "*").count(1000).build();
+            Cursor<byte[]> scan = connection.scan(scanOptions);
+            Set<String> keys = new HashSet<>();
+            while (scan.hasNext()) {
+                byte[] next = scan.next();
+                keys.add(new String(next));
+            }
+            return keys;
+        });
+        if (CollectionUtils.isNotEmpty(deleteKeys)) {
+            redisTemplate.delete(deleteKeys);
+        }
+        return deleteKeys;
+    }
+```
+
+#### (1) bound...Ops和opsFor系列区别
+
+```
+    /**获取a，然后获取b，然后删除c，对同一个key有多次操作，按照opsForHash()的写法
+     * 每次都是redisTemplate.opsForHash().xxx("key","value")写法很是啰嗦
+     */
+    int result = (Integer) redisTemplate.opsForHash().get("hash-key","a");
+    result = (Integer)redisTemplate.opsForHash().get("hash-key","b");
+    redisTemplate.opsForHash().delete("hash-key","c");
+ 
+    /**
+     * boundHashOps()则是直接将key和boundHashOperations对象进行了绑定，
+     * 后续直接通过boundHashOperations对象进行相关操作即可，写法简洁，不需要
+     * 每次都显式的将key写出来
+     */
+    BoundHashOperations<String, String, Object> boundHashOperations = redisTemplate.boundHashOps("hash-key");
+    result = (Integer) boundHashOperations.get("a");
+    result = (Integer) boundHashOperations.get("b");
+    boundHashOperations.delete("c");
+    
+    //以上是个人拙见，如有不对，欢迎指正
+```
+
+## 
+
+### 3. HyperLogLog
+
+#### 3.1 业务场景
 
 亿级用户访问量统计解决方案
 
@@ -155,7 +235,7 @@ HyperLogLog常用于大数据量的统计，比如页面访问量统计或者用
 
 原文链接：https://blog.csdn.net/A_art_xiang/article/details/126767562
 
-#### 1.2 基数统计
+#### 3.2 基数统计
 
 基数统计就是指统计一个集合中不重复的元素个数。比如说统计网页的 UV（访问用户量）。
 
@@ -171,7 +251,7 @@ Redis HyperLogLog 是用来做基数统计的算法，HyperLogLog 的优点是�
 
 HyperLogLog 的统计规则是基于概率完成的，所以它给出的统计结果是有一定误差的，标准误算率是 0.81%。这也就意味着，你使用 HyperLogLog 统计的 UV 是 100 万，但实际的 UV 可能是 101 万。虽然误差率不算大，但是，如果你需要精确统计结果的话，最好还是继续用 Set 或 Hash 类型
 
-#### 1.3 指令
+#### 3.3 指令
 
 pfadd
 
@@ -216,6 +296,26 @@ OK
 (integer) 12
 ```
 
+### 4. 计数器
+
+```
+ // 对value进行加1操作
+stringRedisTemplate.opsForValue().increment(key,1);
+
+// 判断在redis中是否有key值
+Boolean redisKey = stringRedisTemplate.hasKey(key);
+```
+
+### 5. zset
+
+正无穷 +inf  负无穷 -inf
+
+(2  3  :  2<value<=3
+
+```
+zrangebyscore com.lin.redis:pv_set 2 +inf withscores
+```
+
 ## 三、 内存淘汰机制&删除策略
 
 查看过期策略    config get maxmemory-policy
@@ -244,9 +344,42 @@ redis默认是 定期删除+惰性删除
 
 由于删除策略的存在，如果key很多，那么key 过期了，不会立即监听到，必须等redis删除才能监听到。  如果此时get查询key则触发惰性删除，监听到当前key
 
+```
+    @Bean
+    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory redisConnectionFactory) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(redisConnectionFactory);
+        return container;
+    }
+```
+
+```
+@Component
+public class KeyExpiredListener extends KeyExpirationEventMessageListener {
+    public KeyExpiredListener(RedisMessageListenerContainer listenerContainer) {
+        super(listenerContainer);
+    }
+
+    @Override
+    public void onMessage(Message message, byte[] pattern) {
+        // open or close
+        System.out.println("key 过期了"+message.toString());
+        byte[] channel = message.getChannel();
+        String topic = new String(channel);
+        System.out.println("key 过期了, topic = "+ topic);
+    }
+}
+```
+
+## 五、RESP协议
+
+Redis Serialization Protocol
+
+在netty学习中，使用到RESP协议连接redis，  用户在Redis客户端键入命令后，Redis-cli会把命令转化为RESP协议格式，然后发送给服务器。
+
 ## 六、客户端工具
 
-### 1. **AnotherRedisDesktopManager**
+### 6.1 **AnotherRedisDesktopManager**
 
 下载地址  ： https://github.com/qishibo/AnotherRedisDesktopManager/releases
 
