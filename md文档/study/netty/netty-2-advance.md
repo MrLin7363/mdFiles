@@ -1056,3 +1056,347 @@ DefaultChannelConfig默认配置项
 - 负责入站数据的分配，决定入站缓冲区的大小（并可动态调整），统一采用 direct 直接内存，具体池化还是非池化由 allocator 决定
 
 ### 1.3 RPC框架
+
+#### 1.3.1 RpcServer
+
+```
+@Slf4j
+public class RpcServer {
+    public static void main(String[] args) {
+        NioEventLoopGroup boss = new NioEventLoopGroup();
+        NioEventLoopGroup worker = new NioEventLoopGroup();
+        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.DEBUG);
+        MessageCodecSharable MESSAGE_CODEC = new MessageCodecSharable();
+
+        // rpc 请求消息处理器，待实现
+        RpcRequestMessageHandler RPC_HANDLER = new RpcRequestMessageHandler();
+        try {
+            ServerBootstrap serverBootstrap = new ServerBootstrap();
+            serverBootstrap.channel(NioServerSocketChannel.class);
+            serverBootstrap.group(boss, worker);
+            serverBootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    ch.pipeline().addLast(new ProcotolFrameDecoder());
+                    ch.pipeline().addLast(LOGGING_HANDLER);
+                    ch.pipeline().addLast(MESSAGE_CODEC);
+                    ch.pipeline().addLast(RPC_HANDLER);
+                }
+            });
+            Channel channel = serverBootstrap.bind(8080).sync().channel();
+            channel.closeFuture().sync();
+        } catch (InterruptedException e) {
+            log.error("server error", e);
+        } finally {
+            boss.shutdownGracefully();
+            worker.shutdownGracefully();
+        }
+    }
+}
+```
+
+#### 1.3.2 RpcClient
+
+```
+@Slf4j
+public class RpcClient {
+    public static void main(String[] args) {
+        NioEventLoopGroup group = new NioEventLoopGroup();
+        LoggingHandler LOGGING_HANDLER = new LoggingHandler(LogLevel.DEBUG);
+        MessageCodecSharable MESSAGE_CODEC = new MessageCodecSharable();
+
+        // rpc 响应消息处理器，待实现
+        RpcResponseMessageHandler RPC_HANDLER = new RpcResponseMessageHandler();
+        try {
+            Bootstrap bootstrap = new Bootstrap();
+            bootstrap.channel(NioSocketChannel.class);
+            bootstrap.group(group);
+            bootstrap.handler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    ch.pipeline().addLast(new ProcotolFrameDecoder());
+                    ch.pipeline().addLast(LOGGING_HANDLER);
+                    ch.pipeline().addLast(MESSAGE_CODEC);
+                    ch.pipeline().addLast(RPC_HANDLER);
+                }
+            });
+            Channel channel = bootstrap.connect("localhost", 8080).sync().channel();
+
+            channel.writeAndFlush(new RpcRequestMessage(
+                1,
+                "com.lin.netty.nettyoptimize.c3rpc.HelloService",
+                "sayHello",
+                String.class,
+                new Class[]{String.class},
+                new Object[]{"张三"}
+            )).addListener(promise -> {
+                if (!promise.isSuccess()) {
+                    Throwable cause = promise.cause();
+                    log.error("error", cause);
+                }
+            });
+
+            channel.closeFuture().sync();
+        } catch (Exception e) {
+            log.error("client error", e);
+        } finally {
+            group.shutdownGracefully();
+        }
+    }
+}
+```
+
+#### 1.3.3 ServicesFactory
+
+```
+public class ServicesFactory {
+    static Properties properties;
+    static Map<Class<?>, Object> map = new ConcurrentHashMap<>();
+
+    static {
+        try (InputStream in = Config.class.getResourceAsStream("/application.properties")) {
+            properties = new Properties();
+            properties.load(in);
+            Set<String> names = properties.stringPropertyNames();
+            for (String name : names) {
+                if (name.endsWith("Service")) {
+                    Class<?> interfaceClass = Class.forName(name);
+                    Class<?> instanceClass = Class.forName(properties.getProperty(name));
+                    map.put(interfaceClass, instanceClass.newInstance());
+                }
+            }
+        } catch (IOException | ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    public static <T> T getService(Class<T> interfaceClass) {
+        return (T) map.get(interfaceClass);
+    }
+}
+```
+
+#### 1.3.4 RpcRequestMessageHandler
+
+```
+@Slf4j
+@ChannelHandler.Sharable
+public class RpcRequestMessageHandler extends SimpleChannelInboundHandler<RpcRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, RpcRequestMessage message) {
+        RpcResponseMessage response = new RpcResponseMessage();
+        response.setSequenceId(message.getSequenceId());
+        try {
+            // 获取真正的实现对象
+            HelloService service = (HelloService)
+                ServicesFactory.getService(Class.forName(message.getInterfaceName()));
+
+            // 获取要调用的方法
+            Method method = service.getClass().getMethod(message.getMethodName(), message.getParameterTypes());
+
+            // 调用方法
+            Object invoke = method.invoke(service, message.getParameterValue());
+            // 调用成功
+            response.setReturnValue(invoke);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 调用异常
+            response.setExceptionValue(e);
+        }
+        // 返回结果
+        ctx.writeAndFlush(response);
+    }
+}
+```
+
+#### 1.3.5 RpcRequestMessage
+
+```
+@Getter
+@ToString(callSuper = true)
+public class RpcRequestMessage extends Message {
+    /**
+     * 调用的接口全限定名，服务端根据它找到实现
+     */
+    private String interfaceName;
+    /**
+     * 调用接口中的方法名
+     */
+    private String methodName;
+    /**
+     * 方法返回类型
+     */
+    private Class<?> returnType;
+    /**
+     * 方法参数类型数组
+     */
+    private Class[] parameterTypes;
+    /**
+     * 方法参数值数组
+     */
+    private Object[] parameterValue;
+
+    public RpcRequestMessage(int sequenceId, String interfaceName, String methodName, Class<?> returnType, Class[] parameterTypes, Object[] parameterValue) {
+        super.setSequenceId(sequenceId);
+        this.interfaceName = interfaceName;
+        this.methodName = methodName;
+        this.returnType = returnType;
+        this.parameterTypes = parameterTypes;
+        this.parameterValue = parameterValue;
+    }
+
+    @Override
+    public int getMessageType() {
+        return RPC_MESSAGE_TYPE_REQUEST;
+    }
+}
+```
+
+#### 1.3.6 RpcResponseMessage
+
+```
+@Data
+@ToString(callSuper = true)
+public class RpcResponseMessage extends AbstractResponseMessage{
+    /**
+     * 返回值
+     */
+    private Object returnValue;
+    /**
+     * 异常值
+     */
+    private Exception exceptionValue;
+
+    @Override
+    public int getMessageType() {
+        return RPC_MESSAGE_TYPE_RESPONSE;
+    }
+}
+```
+
+#### 1.3.7 类型转换器
+
+```
+public class TestGson {
+
+    public static void main(String[] args) {
+        System.out.println(new Gson().toJson("test"));
+        // Attempted to serialize java.lang.Class: java.lang.String. Forgot to register a type adapter?
+        // 需要写个类型转换器，将类转化为String
+        Gson gson = new GsonBuilder().registerTypeAdapter(Class.class, new ClassCodec()).create();
+        System.out.println(gson.toJson(String.class));
+    }
+
+    static class ClassCodec implements JsonSerializer<Class<?>>, JsonDeserializer<Class<?>> {
+        @Override
+        public Class<?> deserialize(JsonElement json, Type type,
+            JsonDeserializationContext jsonDeserializationContext) throws JsonParseException {
+            // json -> class
+            try {
+                String str = json.getAsString();
+                return Class.forName(str);
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+                throw new JsonParseException(e);
+            }
+        }
+
+        @Override
+        public JsonElement serialize(Class<?> src, Type type, JsonSerializationContext jsonSerializationContext) {
+            // class -> json  全路径转为字符串
+            return new JsonPrimitive(src.getName());
+        }
+    }
+}
+```
+
+#### 1.3.8 HelloService
+
+```
+public interface HelloService {
+    String sayHello(String name);
+}
+```
+
+```
+public class HelloServiceImpl implements HelloService {
+    public String sayHello(String name) {
+        System.out.println("hello " + name);
+        return "hello " + name;
+    }
+}
+```
+
+#### 1.3.9 RpcResponseMessageHandler
+
+```
+@Slf4j
+@ChannelHandler.Sharable  // 这里不允许有共享的变量，不保证安全，但是我们自己保证了线程安全，所以可以有共享变量
+public class RpcResponseMessageHandler extends SimpleChannelInboundHandler<RpcResponseMessage> {
+    // 序号  用来接收结果的promise对象
+    public static final Map<Integer, Promise<Object>> PROMISES = new ConcurrentHashMap<>();
+
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, RpcResponseMessage msg) throws Exception {
+        log.debug("{}", msg);
+        // 取到对象后 移除对象，不然越来越多
+        Promise<Object> promise = PROMISES.remove(msg.getSequenceId());
+        if (promise != null) {
+            Exception exceptionValue = msg.getExceptionValue();
+            Object returnValue = msg.getReturnValue();
+            if (exceptionValue != null) {
+                promise.setFailure(exceptionValue);
+            } else {
+                promise.setSuccess(returnValue);
+            }
+        }
+    }
+}
+```
+
+#### 1.3.10 Promise
+
+client proxy这里逻辑修改
+
+```
+Object o = Proxy.newProxyInstance(loader, interfaces, (proxy, method, args) -> {
+    // 1. 方法转换为 消息对象
+    int sequenceId = SequenceIdGenerator.getSequenceId();
+    RpcRequestMessage rpcRequestMessage = new RpcRequestMessage(
+        sequenceId,
+        serviceClass.getName(),
+        method.getName(),
+        method.getReturnType(),
+        method.getParameterTypes(),
+        args);
+    // 2. 消息对象发送出去
+    getChannel().writeAndFlush(rpcRequestMessage);
+
+    // 3.准备一个空Promise对象，来接收结果  指定promise对象异步接收结果线程
+    DefaultPromise<Object> promise = new DefaultPromise<>(getChannel().eventLoop());
+    RpcResponseMessageHandler.PROMISES.put(sequenceId, promise);
+
+    promise.await();
+    // 3. 返回结果
+    if (promise.isSuccess()) {
+        return promise.getNow();
+    } else {
+        throw new RuntimeException(promise.cause());
+    }
+});
+```
+
+#### 1.3.11 异常处理
+
+服务器异常 RpcRequestMessageHandler ,  编码解析器长度不够解析 异常堆栈信息
+
+```
+catch (Exception e) {
+            e.printStackTrace();
+            // Adjusted frame length exceeds 1024: 11652 - discarded
+            // 如果直接set e 返回给客户端，客户端接收不到，因为堆栈太大，  长度解析器最大1024
+            response.setExceptionValue(new Exception("远程调用出错" + e.getCause().getMessage()));
+        }
+```
+
+
