@@ -206,5 +206,80 @@ mvn deploy:deploy-file -Dfile=jar包 -DgroupId=groupID -DartifactId=artifacid -D
 
 2.重新点击reimport即可
 
+#### 9.子项目引用父项目版本，子项目需要不同版本时
 
+直接子项目加上依赖
+
+```
+ <dependencies>
+        <!--覆盖了父类项目的2.3.6的spring-boot版本 ，引用新的2.7.0,maven依赖同时存在以下的一些spring-boot多个版本配置 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <version>2.7.0</version>
+            <scope>compile</scope>
+        </dependency>
+ <dependencies>        
+```
+
+#### 10. lastUpdated问题
+
+项目使用[maven](https://so.csdn.net/so/search?q=maven&spm=1001.2101.3001.7020)管理jar包，很容易因为各种原因(网速慢、断网)导致jar包下载不下来，出现很多.lastUpdated文件。这些文件一个一个删除太麻烦。下面是全部删除的方法。 .lastUpdated文件会导致即使有这个jar包，刷新maven时会报cannot resolve，最好删除，才能重新拉包。   不删除如果本地有idea还是能访问到这个jar包
+
+```
+windows系统下，cd到本地仓库目录下，运行命令
+for /r %i in (*.lastUpdated) do del %i
+```
+
+## MAVEN知识点
+
+### scope
+
+compile(默认)
+如果没有指定scope,那么该元素的默认值为compile。被依赖项目需要参与到项目的编译、测试、打包、运行等阶段，打包时通常会包含被依赖项目，是比较强的依赖。
+
+provided
+被依赖项目理论上可以参与到项目的编译、测试、运行等阶段，当时在打包时进行了exclude动作。
+应用场景：例如我们在开发一个web项目，在编译的时候我们需要依赖servlet-api.jar,但在运行时我们不需要这个jar，因为它已由应用服务器提供，这是我们就需要用provided来修饰这个依赖包。
+
+runtime
+顾名思义，表示该依赖项目无需参与到项目的编译，但会参与到测试与运行阶段。
+应用场景：例如在编译时我们不需要JDBC API的jar，但在运行时才需要JDBC的驱动包。
+
+test
+表示该依赖项目仅会参与到项目的测试阶段。
+应用场景：例如，Junit 测试。system
+
+与provided类似，但是被依赖项不会从maven仓库查找依赖，而是从本地系统中获取，systemPath元素用于指定依赖在系统中jar的路径。
+
+import
+它只使用在dependencyManagement中，我们知道maven和java只能单继承，作用是管理依赖包的版本，一般用来保持当前项目的所有依赖版本统一。
+例如：项目中有很多的子项目，并且都需要保持依赖版本的统一，以前的做法是创建一个父类来管理依赖的版本，所有的子类继承自父类，这样就会导致父项目的pom.xml非常大，而且子项目不能再继承其他项目。
+
+import为我们解决了这个问题，可以把dependencyManagement放到一个专门用来管理依赖版本的pom中，然后在需要用到该依赖配置的pom中使用scope import就可以引用配置。
+
+### mirror和pom
+
+官网：https://maven.apache.org/guides/mini/guide-mirror-settings.html
+
+- `*` = everything
+- `external:*` = everything not on the localhost and not file based.
+- `repo,repo1` = repo or repo1
+- `*,!repo1` = everything except repo1
+
+```
+<mirrorOf>central,!rdc-releases,!rdc-snapshots</mirrorOf>
+含义: 镜像拦截了 远端仓库central, 但不拦截 rdc-releases 和 rdc-snapshots
+```
+
+B仓库的ID会映射到URL去下载依赖
+
+```
+<mirror> 
+<id>A仓库的id</id> 
+<name>xxx</name> 
+<url>A仓库的url</url> 
+<mirrorOf>B仓库的id</mirrorOf> 
+</mirror>
+```
 
