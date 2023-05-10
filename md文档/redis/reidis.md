@@ -388,4 +388,66 @@ RedisDesktop这个款工具已经开始收费
 能不用cmd不用cmd，客户端工具好用
 
 这里的界面搜索，能直接搜索全部节点；而且能打开命令行
+## 七、spring-boot配置redis cluster代码
+
+```
+spring:
+  redis:
+    cluster:
+      # 集群节点
+      nodes: 192.168.1.1:7000,192.168.1.1:7001,192.168.1.2:7002,192.168.1.2:7003
+      # 最大重定向次数
+      max-redirects: 5
+    # 密码
+    password: myredis
+    lettuce:
+      pool:
+        min-idle: 0
+        max-active: 8
+        max-wait: -1
+        max-idle: 8
+        enabled: true
+
+```
+
+```
+import org.springframework.cache.annotation.CachingConfigurerSupport;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+/**
+ *  redis配置
+ * 集群版 Redis缓存配置类
+ */
+@Configuration
+@EnableCaching
+public class RedisConfig extends CachingConfigurerSupport
+{
+    @Bean
+    @SuppressWarnings(value = { "unchecked", "rawtypes" })
+    public RedisTemplate<Object, Object> redisTemplate(RedisConnectionFactory connectionFactory)
+    {
+        RedisTemplate<Object, Object> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
+
+        FastJson2JsonRedisSerializer serializer = new FastJson2JsonRedisSerializer(Object.class);
+
+        // 使用StringRedisSerializer来序列化和反序列化redis的key值
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(serializer);
+
+        // Hash的key也采用StringRedisSerializer的序列化方式
+        template.setHashKeySerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(serializer);
+
+        template.afterPropertiesSet();
+        return template;
+    }
+}
+```
+
 
