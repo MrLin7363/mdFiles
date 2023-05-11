@@ -74,6 +74,10 @@ WHERE
 
 from -> where -> group by -> select -> order by -> limit
 
+### 5. 索引优化积累
+
+联合索引可能比单独的两个索引速度更快
+
 ## SQL积累
 
 ### 1. limit&offset
@@ -396,7 +400,30 @@ FROM Employee AS a JOIN Employee AS b    # 和这个效果一致，都是全连�
 ;
 ```
 
+```
+select a.system,
+case when h.health_level is null then 0 else h.health_level end as health_level,
+case when request10minute is null then 0 else request10minute end as request10minute,
+case when request1hour is null then 0 else request1hour end  as request1hour,
+case when request12hour is null then 0 else request12hour end  as request12hour from
+(select system from proxy_system where is_delete=0) as a 
 
+inner join 
+(select proxy_system,count(*) as request12hour from proxy_statistic where proxy_start>1683316800000 group by proxy_system)as d
+on a.system=d.proxy_system
+
+left join 
+(select proxy_system,count(*) as request1hour from proxy_statistic where proxy_start>1683356400000 group by proxy_system)as b
+on a.system=b.proxy_system
+
+left join  
+(select proxy_system,count(*) as request10minute from proxy_statistic where proxy_start>1683359400000 group by proxy_system)as c
+on a.system=c.proxy_system
+
+left join system_health h
+
+on a.system=h.system 
+```
 
 ### 6. 困难题积累
 
