@@ -2,7 +2,7 @@
 
 学习视频  https://www.bilibili.com/video/BV1CL4y157ie?p=9&vd_source=0ee4a5fcc4ed2246ba902aa714c4428b
 
-
+中文手册-极力推荐：https://shardingsphere.apache.org/document/legacy/3.x/document/cn/manual/
 
 ### 分库分表
 
@@ -82,4 +82,72 @@ https://www.cnblogs.com/lvxueyang/p/15006825.html
 
 
 比如只有订单啥的数据分库，大部分数据在一个主库，这时候主库需要这个表，读库也需要这个表，就要设置为广播表
+
+### 分片策略
+
+五、sharding-jdbc 分片策略分片策略
+包含分片键和分片算法，由于分片算法的独立性，将其独立抽离。真正可用于分片操作的是分片键 + 分片算法，也就是分片策略。目前提供5种分片策略。
+
+标准分片策略
+对应StandardShardingStrategy。提供对SQL语句中的=, >, <, >=, <=, IN和BETWEEN AND的分片操作支持。StandardShardingStrategy只支持单分片键，提供PreciseShardingAlgorithm和RangeShardingAlgorithm两个分片算法。PreciseShardingAlgorithm是必选的，用于处理=和IN的分片。RangeShardingAlgorithm是可选的，用于处理BETWEEN AND, >, <, >=, <=分片，如果不配置RangeShardingAlgorithm，SQL中的BETWEEN AND将按照全库路由处理。
+
+PreciseShardingAlgorithm 一般情况用于插入时
+
+复合分片策略
+对应ComplexShardingStrategy。复合分片策略。提供对SQL语句中的=, >, <, >=, <=, IN和BETWEEN AND的分片操作支持。ComplexShardingStrategy支持多分片键，由于多分片键之间的关系复杂，因此并未进行过多的封装，而是直接将分片键值组合以及分片操作符透传至分片算法，完全由应用开发者实现，提供最大的灵活度。
+
+行表达式分片策略
+对应InlineShardingStrategy。使用Groovy的表达式，提供对SQL语句中的=和IN的分片操作支持，只支持单分片键。对于简单的分片算法，可以通过简单的配置使用，从而避免繁琐的Java代码开发，如: t_user_$->{u_id % 8} 表示t_user表根据u_id模8，而分成8张表，表名称为t_user_0到t_user_7。
+
+Hint分片策略
+对应HintShardingStrategy。通过Hint指定分片值而非从SQL中提取分片值的方式进行分片的策略。
+
+不分片策略
+对应NoneShardingStrategy。不分片的策略。
+
+
+
+### 问题
+
+1、自定义子查询无法分表，还是照原SQL表名执行，尽量不进行子查询。
+
+（1）使用join关联查询，或者单表查询，或者利用jdbc的algorithm获取到哪些表，自己传入表名执行原生SQL
+
+（2）重写AbstractSQLBuilder这个方法，加入额外的业务逻辑
+
+2、数据库字段名和sharding jdbc关键字重名，就会报“no viable alternative at input”
+
+使用mybatis的xml重新编写sql语句，重名的字段名加上`` 这个符号。
+
+3、只有SQL包含指定的表，才会启动sharding-jdbc
+
+#### 4. 行表达式
+
+行表达式的使用非常直观，只需要在配置中使用`${ expression }`或`$->{ expression }`标识行表达式即可。 目前支持数据节点和分片算法这两个部分的配置。行表达式的内容使用的是Groovy的语法，Groovy能够支持的所有操作，行表达式均能够支持。例如：
+
+`${begin..end}`表示范围区间
+
+`${[unit1, unit2, unit_x]}`表示枚举值
+
+行表达式中如果出现连续多个`${ expression }`或`$->{ expression }`表达式，整个表达式最终的结果将会根据每个子表达式的结果进行笛卡尔组合。
+
+例如，以下行表达式：
+
+```
+${['online', 'offline']}_table${1..3}
+->
+online_table1, online_table2, online_table3, offline_table1, offline_table2, offline_table3
+```
+
+```
+db$->{0..1}.t_order$->{0..1}
+->
+db0
+  ├── t_order0 
+  └── t_order1 
+db1
+  ├── t_order2
+  ├── t_order3
+  └── t_order4
+```
 
