@@ -1246,6 +1246,7 @@ protected ConfigurableApplicationContext createApplicationContext() {
 ```
 
 获取到对应上下文环境的属性值、也可以往上下文中设置属性和参数
-7. postContruct 初始化
+
+7.**postContruct 初始化**
 初始化PostConstruct 或者 elasticJob 等加入的类
 AbstractApplicationContext.refresh()  -> this.finishBeanFactoryInitialization(beanFactory);
