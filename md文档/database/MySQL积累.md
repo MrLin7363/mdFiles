@@ -491,3 +491,37 @@ where ((a.id = b.id-1 and b.id+1 = c.id) or   -- a b c    a为三个连续值中
 order by a.id;
 ```
 
+### 7. count(条件)
+
+注意要加 or null  ， count只有在值为null时才不统计数据，而为false时是会统计数据的
+
+```
+SELECT COUNT(*) AS request,count(status between 200 and 299 or null)/count(*)*100 as successRate FROM `xxx` WHERE start between 1684740023639 and 1684740623639 AND system = 'Test' and uri like concat('/','%')
+```
+
+### 8.分页性能优化
+
+```
+-- 传统limit，文件扫描
+[SQL]SELECT * FROM tableName ORDER BY id LIMIT 500000,2;
+受影响的行: 0
+时间: 5.371s
+
+-- 子查询方式，索引扫描    如果这里有其他查询条件，则外层的select也要带查询条件不是很推荐这种
+[SQL]
+SELECT * FROM tableName
+WHERE id >= (SELECT id FROM tableName ORDER BY id LIMIT 500000 , 1)
+LIMIT 2;
+受影响的行: 0
+时间: 0.274s
+
+-- JOIN分页方式
+[SQL]
+SELECT *
+FROM tableName AS t1
+JOIN (SELECT id FROM tableName ORDER BY id desc LIMIT 500000, 1) AS t2
+WHERE t1.id <= t2.id ORDER BY t1.id desc LIMIT 2;
+受影响的行: 0
+时间: 0.278s
+```
+
