@@ -119,7 +119,7 @@ Hint分片策略
 
 使用mybatis的xml重新编写sql语句，重名的字段名加上`` 这个符号。
 
-3、只有SQL包含指定的表，才会启动sharding-jdbc
+3、只有SQL包含指定的表，才会启动sharding-jdbc，但是数据源作为shardingjdbc的，还是会启动mysql 8 默认校验器
 
 #### 4. 行表达式
 
@@ -150,4 +150,56 @@ db1
   ├── t_order3
   └── t_order4
 ```
+
+#### 6.遇见难题
+
+springboot启动后加载yaml文件后如何获取已经初始化的所有表，通过看源码的方式知道了ShardingDataSource
+
+#### 7.报错积累
+
+```
+java.lang.NullPointerException: null
+	at org.apache.shardingsphere.shardingjdbc.jdbc.core.resultset.ShardingResultSet.getString(ShardingResultSet.java:160) ~[sharding-jdbc-core-4.1.1.jar:4.1.1]
+```
+
+一般由于字段 _下划线没有自动转驼峰问题
+
+```
+数据表中有一个 system 的字段，是mysql的关键字，如果走shardingjdbc的数据操作，就会报空指针异常，解决方法是在涉及到system字段的数据操作接口加上``进行转义
+```
+
+### 源码
+
+#### 1. 初始化后如何代码获取配置
+
+SpringBootConfiguration 实现了bean并将yaml的shardingjdbc的配置读入，初始化了ShardingDataSource
+
+```
+@Component
+public class StatisticConfig {
+    private static final Map<String, List<String>> TABLES_MAP = new HashMap<>();
+
+    @Resource
+    private ShardingDataSource shardingDataSource;
+
+    @PostConstruct
+    public void init(){
+        Collection<TableRule> tableRules = shardingDataSource.getRuntimeContext().getRule().getTableRules();
+        TableRule rule = tableRules.stream().findFirst().orElse(null);
+        rule.getActualDataNodes().forEach(table->{
+            
+        });
+    }
+}
+```
+
+#### 2. 解析SQL运行过程
+
+ShardingRouteDecorator.decorate() -> RouteContext ->BasePrepareEngine.prepare -> SQLRewriteEntry.createSQLRewriteContext()
+
+->SQLRouteRewriteEngine.rewrite() -> AbstractSQLBuilder.toSQL()
+
+#### 3. 插入操作
+
+BasePrepareEngine.executeRewrite
 
