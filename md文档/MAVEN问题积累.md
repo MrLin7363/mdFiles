@@ -87,7 +87,6 @@ https://blog.csdn.net/u010406047/article/details/110492505
 
 这样生成的*.jar可直接运行，但不能被其他项目模块依赖。这是因为repackage将项目的class都放在了jar包 BOOT-INF/classes 文件夹中，导致其他模块不能加载jar包中的class。
 
-
 1.带有BOOT-INF的jar包，是编译后的，可执行jar包,可以使用 java -jar  启动
 
 ```
@@ -232,13 +231,72 @@ mvn deploy:deploy-file -Dfile=jar包 -DgroupId=groupID -DartifactId=artifacid -D
  <dependencies>        
 ```
 
-#### 10. lastUpdated问题
+### 10. lastUpdated问题
 
 项目使用[maven](https://so.csdn.net/so/search?q=maven&spm=1001.2101.3001.7020)管理jar包，很容易因为各种原因(网速慢、断网)导致jar包下载不下来，出现很多.lastUpdated文件。这些文件一个一个删除太麻烦。下面是全部删除的方法。 .lastUpdated文件会导致即使有这个jar包，刷新maven时会报cannot resolve，最好删除，才能重新拉包。   不删除如果本地有idea还是能访问到这个jar包
 
 ```
 windows系统下，cd到本地仓库目录下，运行命令
 for /r %i in (*.lastUpdated) do del %i
+```
+
+### 11.部署后访问src外文件
+
+**路径问题**
+
+1. 本地启动spring项目，默认路径是当前idea项目根目录
+
+2. 打包部署的微服务，一般是 /微服务名称/bin ....    ， 代码当前路径是jar包所在地址，jar包一般打包在 /微服务名称/libs下
+
+   所以访问路径一般为   ../回到根目录
+
+3. ```
+   // 这里可以获取绝对路径，但是微服务部署不一定存在这种硬盘路径 D:xxx  而是 /微服务名称/bin
+   String property = System.getProperty("user.dir");
+   ```
+
+**BufferedReader读取文件**
+
+项目打包  mvn clean package会在当前目录生成 可运行jar包文件，然后流水线调用sh文件 java-jar 启动jar包部署
+
+```
+    private String readSql() {
+        StringBuilder sql = new StringBuilder();
+        String line = "";
+        try (BufferedReader br = new BufferedReader(new FileReader(("../scripts/table.sql")))) {
+            while ((line = br.readLine()) != null) {
+                sql.append(line);
+            }
+            LOGGER.info("CreateStatisticTableJob read table success file sql={}", sql);
+        } catch (IOException e) {
+            LOGGER.error("CreateStatisticTableJob read table scripts error");
+        }
+        return sql.toString();
+    }
+```
+
+```
+// 这里可以获取绝对路径，但是微服务部署不一定存在这种硬盘路径 D:xxx  而是 /微服务名称/bin
+String property = System.getProperty("user.dir");
+```
+
+**读取文件指定字符集的解决方案**
+
+上面的reader没有指定字符集
+
+解决BufferedReader读取文件指定字符集的问题，可以使用InputStreamReader类的构造函数，把FileInputStream对象和指定的字符集传入InputStreamReader的构造函数中，然后把InputStreamReader对象传入BufferedReader的构造函数中，就可以实现指定字符集的文件读取了。
+
+```
+//指定字符集的文件读取
+FileInputStream fis = new FileInputStream("test.txt");
+InputStreamReader isr = new InputStreamReader(fis,"utf-8");
+BufferedReader br = new BufferedReader(isr);
+String line = null;
+//读取文件
+while((line = br.readLine()) != null){
+    System.out.println(line);
+}
+br.close();
 ```
 
 ## MAVEN知识点
@@ -367,6 +425,5 @@ pluginRepositories 表示插件的下载仓库地址，字段和用法与reposit
            <url>https://....../</url>
         </pluginRepository>
     </pluginRepositories>
-
 ```
 
