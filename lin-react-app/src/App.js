@@ -9,6 +9,7 @@ import Clock from './component/interval/Clock'
 import WebSite from './component/propstate/demo';
 import Index from './component/reflux/components/Index';
 import BaiduIframe from './component/iframe/BaiduIframe';
+import TableAntd from './component/antd/table/TableAntd';
 
 class App extends React.Component {
   render() {
@@ -26,7 +27,7 @@ class App extends React.Component {
             <Link to="/form">Form</Link>
           </li>
           <li>
-            <Link to="/table">Table</Link>
+            <Link to="/table">Table-原生</Link>
           </li>
           <li>
             <Link to="/clock">Clock-setInterval</Link>
@@ -40,6 +41,9 @@ class App extends React.Component {
           <li>
             <Link to="/baidu">百度嵌入iframe页</Link>
           </li>
+          <li>
+            <Link to="/antd/table">antd表格+逐行调接口+时间范围框</Link>
+          </li>
         </ul>
         <hr />
         <Route exact path="/" component={Home} />
@@ -50,6 +54,7 @@ class App extends React.Component {
         <Route exact path="/porpstate" component={WebSite} />
         <Route exact path="/reflux" component={Index} />
         <Route exact path="/baidu" component={BaiduIframe} />
+        <Route exact path="/antd/table" component={TableAntd} />
       </div>
     </Router>
     );

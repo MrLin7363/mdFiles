@@ -12,6 +12,7 @@ axios.interceptors.request.use(
 
 axios.interceptors.response.use((res) => {
     // 可以进行一些简单操作
+    console.log(res);
     return res;
 }, (error) => {
     console.log(error);

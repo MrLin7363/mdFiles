@@ -8,7 +8,7 @@ class Form extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      pageText: "我是Message组件界面"
+      pageText: "我是Form组件界面"
     }
   }
 
