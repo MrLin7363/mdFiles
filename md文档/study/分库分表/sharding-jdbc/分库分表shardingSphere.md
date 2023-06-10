@@ -8,13 +8,15 @@
 
 sharding-jdbc
 
+![在这里插入图片描述](https://img-blog.csdnimg.cn/6cea23748854491a8307a8ef353fce77.png?x-oss-process=image/watermark,type_ZHJvaWRzYW5zZmFsbGJhY2s,shadow_50,text_Q1NETiBA5rKu5Lin55qE5Y2X55Oc,size_14,color_FFFFFF,t_70,g_se,x_16)
+
+很显然，ShardingJDBC只是客户端的一个工具包，可以理解为一个特殊的JDBC驱动包，**所有分库分表逻辑均由业务方自己控制**，所以他的功能相对灵活，支持的数据库也非常多，**但是对业务侵入大，需要业务方自己定制所有的分库分表逻辑**。
+
+而**ShardingProxy是一个独立部署的服务，对业务方无侵入**，业务方可以像用一个普通的MySQL服务一样进行数据交互，基本上感觉不到后端分库分表逻辑的存在，但是这也意味着功能会比较固定，能够支持的数据库也比较少。这两者各有优劣。类似mycat
+
 ### 读写分离
 
-![image-20220905143839834](asserts/image-20220818111424820.png)
-
 数据库(不同IP)->不同database(同一个IP下/不同IP下也行)->不同表
-
-
 
 
 
@@ -149,6 +151,12 @@ db1
   ├── t_order2
   ├── t_order3
   └── t_order4
+```
+
+一个月分两张表
+
+```
+ds1.table_$->{2020..2030}$->{(1..12).collect{t ->t.toString().padLeft(2,'0')}}${['01', '16']}
 ```
 
 #### 6.遇见难题
