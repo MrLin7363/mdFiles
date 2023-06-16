@@ -273,9 +273,9 @@ AnnotationConfigWebApplicationContext是AnnotationConfigApplicationContext的Web
 （1）初始化的入口由容器实现中的refresh（）方法调用来完成。
 （2）对Bean定义载入IoC容器使用的方法是loadBeanDefinition（）    
 
-​	大致过程如下：通过 ResourceLoader 来完成资源文件的定位，DefaultResourceLoader 是默认的实现，同时上下文本身就给出了ResourceLoader的实现，可以通过类路径、文件系统、 URL等方式来定位资源。如果是XmlBeanFactory作为IoC容器，那么需要为它指定Bean定义的资源，也就是说Bean定义文件时通过抽象成Resource来被IoC容器处理，容器通过BeanDefinitionReader来完成定义信息的解析和 Bean信息的注册，往往使用 XmlBeanDefinitionReader 来解析 Bean 的XML定义文件—实际的处理过程是委托给 BeanDefinitionParserDelegate 来完成的，从而得到Bean的定义信息，这些信息在Spring中使用BeanDefinition来表示—这个名字可以让我们想到loadBeanDefinition（）、 registerBeanDefinition（）这些相关方法。它们都是为处理BeanDefinition服务的，容器解析得到BeanDefinition以后，需要在IoC容器中注册，这由IoC实现BeanDefinitionRegistry接口来实现。注册过程就是在IoC容器内部维护的一个HashMap来保存得到的BeanDefinition的过程。这个HashMap是IoC容器持有Bean信息的场所，以后对Bean的操作都是围绕这个HashMap来实现的。
-
-​	之后我们就可以通过BeanFactory和ApplicationContext来享受SpringIoC的服务了。在使用IoC 容器的时候我们注意到，除了少量黏合代码，绝大多数以正确 IoC 风格编写的应用程序代码完全不用关心如何到达工厂，因为容器将把这些对象与容器管理的其他对象钩在一起了。基本的策略是把工厂放到已知的地方，最好放在对预期使用的上下文有意义的地方，以及代码将实际需要访问工厂的地方。 Spring本身提供了对声明式载入Web应用程序用法的应用程序上下文，并将其存储在ServletContext的框架实现中  
+	大致过程如下：通过 ResourceLoader 来完成资源文件的定位，DefaultResourceLoader 是默认的实现，同时上下文本身就给出了ResourceLoader的实现，可以通过类路径、文件系统、 URL等方式来定位资源。如果是XmlBeanFactory作为IoC容器，那么需要为它指定Bean定义的资源，也就是说Bean定义文件时通过抽象成Resource来被IoC容器处理，容器通过BeanDefinitionReader来完成定义信息的解析和 Bean信息的注册，往往使用 XmlBeanDefinitionReader 来解析 Bean 的XML定义文件—实际的处理过程是委托给 BeanDefinitionParserDelegate 来完成的，从而得到Bean的定义信息，这些信息在Spring中使用BeanDefinition来表示—这个名字可以让我们想到loadBeanDefinition（）、 registerBeanDefinition（）这些相关方法。它们都是为处理BeanDefinition服务的，容器解析得到BeanDefinition以后，需要在IoC容器中注册，这由IoC实现BeanDefinitionRegistry接口来实现。注册过程就是在IoC容器内部维护的一个HashMap来保存得到的BeanDefinition的过程。这个HashMap是IoC容器持有Bean信息的场所，以后对Bean的操作都是围绕这个HashMap来实现的。
+	
+	之后我们就可以通过BeanFactory和ApplicationContext来享受SpringIoC的服务了。在使用IoC 容器的时候我们注意到，除了少量黏合代码，绝大多数以正确 IoC 风格编写的应用程序代码完全不用关心如何到达工厂，因为容器将把这些对象与容器管理的其他对象钩在一起了。基本的策略是把工厂放到已知的地方，最好放在对预期使用的上下文有意义的地方，以及代码将实际需要访问工厂的地方。 Spring本身提供了对声明式载入Web应用程序用法的应用程序上下文，并将其存储在ServletContext的框架实现中  
 
 ## DI源码
 
@@ -384,7 +384,7 @@ ConfigurableListableBeanFactory 是一个接口 , 其 prelnstantiateSingletons�
 
 在 Spring中 ,有两个很容易混淆的类：BeanFactory和 FactoryBean。 BeanFactory : Bean工厂 , 是一个工厂(Factory), 我 们 Spring loC容器的最顶层接口就是这个BeanFactory , 它的作用是管理Bean , 即实例化、定位、配置应用程序中的对象及建立这些对象间的 依赖。
 
-Factory Bean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
+FactoryBean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
 
 当用户使用容器本身时可以使用转义字符来得到FactoryBean本身以区别通过FactoryBean 产生的实例对象和FactoryBean对象本身。在 BeanFactory中通过如下代码定义了该转义字符： String FACTORY BEAN PREFIX ="&";
 
@@ -484,7 +484,7 @@ postProcessAfterInitialization（）
 
 5.整个过程最终调用的是proxyFactory.getProxy（）方法。到这里，
 proxyFactory有JDK和CGLib两种，我们该如何选择呢？使用
-DefaultAopProxyFactory的createAopProxy（）方法：  
+DefaultAopProxyFactory的createAopProxy（）方法：  默认是JDK动态代理，这个在JDK8后也比CGLIB更快
 
 ### AOP - JDK 代理
 
@@ -526,7 +526,6 @@ Spring AOP为了实现Advice的织入，设计了特定的拦截器对这些功�
 扫描对外网关请求，记录日志
 
 ```
-
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -604,7 +603,32 @@ public class CallLogAopAspect {
 }
 ```
 
+```
+@Aspect
+@Component
+public class CheckW3NameAspect {
+    @Autowired
+    private ProxyConfigMemberRepository proxyConfigMemberRepository;
 
+    /**
+     * 切面
+     */
+    @Pointcut("@annotation(CheckW3Name)")
+    public void checkW3Name() {
+    }
+
+    /**
+     * 前切
+     */
+    @Before("checkW3Name()")
+    public void checkPermission() {
+        String w3Name = RequestHolderUtil.getRequestW3Name();
+        if (!proxyConfigMemberRepository.findByW3Name(w3Name).isPresent()) {
+            throw new CommonException(HttpStatus.FORBIDDEN, "no permission");
+        }
+    }
+}
+```
 
 ## spring MVC源码
 
@@ -619,6 +643,58 @@ Controller 中的某个方法。
 容器（加载Bean的定义信息和初始化所有单例Bean），然后Spring
 MVC会遍历容器中的Bean，获取每一个Controller中的所有方法访问的
 URL，将URL和Controller保存到一个Map中  
+
+### 官方文档
+
+中文：https://www.w3cschool.cn/spring_mvc_documentation_linesh_translation/spring_mvc_documentation_linesh_translation-vtxk27ra.html
+
+### Spring源码
+
+Spring英文官方：https://docs.spring.io/spring-framework/reference/core/beans/factory-scopes.html
+
+Spring源码下载：https://github.com/spring-projects/spring-framework/tree/main/spring-webmvc   包含AOP等
+
+### 源码下载搭建
+
+gradle的下载安装参考spring-boot 源码搭建
+
+（1）根目录setting.gradle配置
+
+```
+pluginManagement {
+	repositories {
+		maven { url 'https://maven.aliyun.com/repository/central'}
+		maven { url 'https://maven.aliyun.com/repository/public' }
+		mavenCentral()
+		gradlePluginPortal()
+		maven { url "https://repo.spring.io/release" }
+	}
+}
+```
+
+（2）build.gradle repositores配置项中，也需要添加阿里云仓库的配置
+
+```
+	repositories {
+			maven { url 'https://maven.aliyun.com/repository/central'}
+			maven { url 'https://maven.aliyun.com/repository/public' }
+			mavenCentral()
+			maven { url "https://repo.spring.io/libs-spring-framework-build" }
+		}
+```
+
+(3) buildSrc下也修改阿里云仓库
+
+(4) 如果idea右侧没有gradle选项，鼠标右键build.gradle文件，选择improt gradleProject
+
+(5) gradle-wrapper.properties 修改路径未本地下载的gradle
+
+```
+#distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-bin.zip
+distributionUrl=file:///D:/ideaProject/source-code/gradle-7.6.1-all.zip
+```
+
+(6) gradle build --refresh-dependencies 刷新依赖
 
 ### 九大组件
 
@@ -648,6 +724,8 @@ ViewResolver即视图解析器，相信大家对这个组件应该很熟悉了�
 大事）和所用的技术（第二件大事，其实也就是找到视图的类型，如JSP）并填入参数。默认情况下， Spring MVC会为我们自动配置一个
 InternalResourceViewResolver，是针对JSP类型视图的。
 
+ 视图类型包括 HTML、JSON、PDF等等，我们前后端分离的情况一般返回是json
+
 #### RequestToViewNameTranslator
 
 RequestToViewNameTranslator组件的作用是从请求中获取ViewName。因为ViewResolver根据ViewName查找View，但有的
@@ -671,9 +749,25 @@ MultipartResolver 是一个大家很熟悉的组件，用于处理上传请求�
 
 ### 初始化
 
-首先找到DispatcherServlet类，寻找init（）方法。我们发现init（）方法其实在父类HttpServletBean中 
+**新版本spring-boot不会初始化DispatcherServlet，只会在第一次调用的时候才refresh()**
 
--> initServletBean（）  
+
+
+首先找到DispatcherServlet类，寻找init（）方法。我们发现init（）方法其实在父类HttpServletBean中 -> initServletBean（）  
+
+第一次初始化DispatcherServlet需要接口调用
+	接口调用 --> HttpServletBean.init;
+    HttpServletBean.init --> FrameworkServlet.initServletBean.initWebApplicationContext.onRefresh;
+    FrameworkServlet.initServletBean.initWebApplicationContext.onRefresh --> DispatcherServlet.initStrategies;
+    
+
+```mermaid
+graph LR
+    接口调用 --> HttpServletBean.init;
+    HttpServletBean.init --> FrameworkServlet.initServletBean.initWebApplicationContext.onRefresh;
+    FrameworkServlet.initServletBean.initWebApplicationContext.onRefresh --> DispatcherServlet.initStrategies;
+    
+```
 
 上面这段代码主要就是初始化IoC容器，最终会调用refresh（）方法
 在IoC容器初始化之后，又调用了onRefresh（）方法，它是在DisptcherServlet类中实现的，来看源码：  
@@ -691,11 +785,15 @@ protected void initStrategies(ApplicationContext context) {
 		initViewResolvers(context);
 		initFlashMapManager(context);
 	}
-
 ```
 
-URL和Controller的关系是如何建立的？ HandlerMapping 的子类**AbstractDetectingUrlHandlerMapping 实现了initApplicationContext**（）方
-法
+（1）URL和Controller的关系是如何建立的？ 
+
+HandlerMapping 的子类**AbstractDetectingUrlHandlerMapping 实现了initApplicationContext**（）方法，而这个方法会在spring启动时调用
+
+（2）mapping信息存放在哪里?
+
+**DispatcherServlet.handlerMappings.mappingRegistry**存放了所有的mapping信息
 
 determineUrlsForHandler（ String beanName）方法的作用是获取每个Controller中的URL，不同的子类有不同的实现，这是典型的模板模
 式。因为开发中用得最多的就是用注解来配置Controller中的URL，BeanNameUrlHandlerMapping是AbstractDetectingUrlHandlerMapping的子
@@ -705,11 +803,40 @@ determineUrlsForHandler（ String beanName）方法的作用是获取每个Contr
 
 ### 运行调用阶段  
 
-运行调用是由请求触发的，所以入口为DispatcherServlet的核心方法doService（）， doService（）中的核心由doDispatch（）实现  
+继承关系 
+
+    DispatcherServlet --> FrameworkServlet;
+    FrameworkServlet --> ApplicationContextAware接入spring;
+    FrameworkServlet --> HttpServletBean;
+    HttpServletBean --> HttpServlet;
+
+```mermaid
+graph TD
+    DispatcherServlet --> FrameworkServlet;
+    FrameworkServlet --> ApplicationContextAware接入spring;
+    FrameworkServlet --> HttpServletBean;
+    HttpServletBean --> HttpServlet;
+    
+```
+
+**接口调用流程**
+
+```mermaid
+graph LR
+    接口调用 --> FrameworkServlet.doGet;
+    FrameworkServlet.doGet --> DispatcherServlet.doService;
+    
+```
 
 
 
-getHandler（processedRequest）方法实际上从HandlerMapping中找到URL和Controller的对应关系，也就是Map＜url， Controller＞。
+运行调用是由请求触发的，所以入口为**DispatcherServlet的核心方法doService（）**， doService（）中的核心由**doDispatch（）**实现  
+
+**getHandler（processedRequest）**->AbstractHandlerMapping.getHandler()->AbstractHandlerMethodMapping.lookupHandlerMethod()
+
+**AbstractHandlerMethodMapping.this.mappingRegistry.getRegistrations() 这个属性里也包含了所有的注册信息**
+
+方法实际上从HandlerMapping中找到URL和Controller的对应关系，也就是Map＜url， Controller＞。
 最终处理请求的是Controller中的方法，现在只是知道了Controller，如何确认Controller中处理请求的方法呢？
 从 Map＜urls， beanName＞中取得 Controller 后，经过拦截器的预处理方法，再通过反射获取该方法上的注解和参数，解析方法和参数上
 的注解，然后反射调用方法获取 ModelAndView结果视图。最后调用RequestMappingHandlerAdapter的handle（）中的核心代码，由
@@ -726,7 +853,328 @@ invocableMethod.invokeAndHandle（）最终要实现的目的是：完成请求�
 法。 Spring MVC解决这个问题的方法是用asm框架读取字节码文件。asm 框架是一个字节码操作框架，更多介绍可以参考其官网。个人建议
 通过注解进行绑定，如下代码所示，这样就可以省去asm框架的读取字节码的操作。  
 
+### springmvc的拦截
+
+源码：HandlerExecutionChain.applyPreHandle  循环每一个Interceptor
+
+AsyncHandlerInterceptor 是继承HandlerInterceptor的
+
+```
+......    implements AsyncHandlerInterceptor
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+{校验jwt等}
+```
+
+### restTemplate的拦截
+
+RestTemplate 是 spring-web 模块提供的一个执行同步http请求的客户端，底层依赖的是 JDK HttpURLConnection, Apache HttpComponents 和 OkHttp3 等，在将请求提交给这些底层模块之前，提供了扩展点：通过ClientHttpRequestInterceptor接口的实现类对请求进行拦截处理。
+
+```
+public class JWTInterceptor implements ClientHttpRequestInterceptor {
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+            throws IOException {
+		......调用其他接口时，请求头加入jwt
+        return execution.execute(request, body);
+    }
+}
+
+```
+
+### 拦截器和过滤器区别
+
+[Java过滤器(Filter)与SpringMVC拦截器(Interceptor)之间的关系与区别](https://www.cnblogs.com/austinspark-jessylu/p/7699133.html)
+
+过滤器和拦截器的区别：
+
+　　**①拦截器是基于java的反射机制的，而过滤器是基于函数回调。
+　　②拦截器不依赖与servlet容器，过滤器依赖与servlet容器。
+　　③拦截器只能对action请求起作用，而过滤器则可以对几乎所有的请求起作用。
+　　④拦截器可以访问action上下文、值栈里的对象，而过滤器不能访问。
+　　⑤在action的生命周期中，拦截器可以多次被调用，而过滤器只能在容器初始化时被调用一次。**
+
+　　**⑥拦截器可以获取IOC容器中的各个bean，而过滤器就不行，这点很重要，在拦截器里注入一个service，可以调用业务逻辑。**
+
+JAVA 过滤器实现
+
+```
+@Component
+public class RequestRealPathFilter implements Filter {
+    @Override
+    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain)
+            throws ServletException, IOException {
+        if (servletRequest instanceof RequestFacade) {
+           ... 处理业务，使用ThreadLocal能够让访问的线程能访问到这里设置的值
+        }
+        filterChain.doFilter(servletRequest, servletResponse);
+    }
+}
+```
+
+### 异常处理
+
+@ControllerAdvice  和 @ExceptionHandler 一起用
+
+### 验证支持
+
+@Valid (参数上) 和 @Validated (Controller上)
+
+### 基础配置
+
+extends WebMvcConfigurerAdapter 
+
+```
+public void addInterceptors(InterceptorRegistry registry) // 配置拦截器
+public void addFormatters(FormatterRegistry registry) // 配置数字类型和日期类型的默认格式化
+
+```
+
+### 设计模式-责任链模式
+
+Spring MVC中 HandlerExecutionChain
+
+SpringMVC中实际上是基于Servlet的框架，当客户端发送请求到web时，都会进入DispatcherServlet中，然后根据Servlet的生命周期去执行doService方法，在doService方法中有一个关键方法doDispatch，其中就运用到得了责任链模式来对进来的请求进行处理。
+
+```
+	protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+		HttpServletRequest processedRequest = request;
+		//处理执行链
+		HandlerExecutionChain mappedHandler = null;
+		boolean multipartRequestParsed = false;
+		WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+		try {
+			ModelAndView mv = null;
+			Exception dispatchException = null;
+			try {
+				processedRequest = checkMultipart(request);
+				multipartRequestParsed = (processedRequest != request);
+				//获取处理对象
+				mappedHandler = getHandler(processedRequest);
+				if (mappedHandler == null) {
+					noHandlerFound(processedRequest, response);
+					return;
+				}
+				HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+				String method = request.getMethod();
+				boolean isGet = HttpMethod.GET.matches(method);
+				if (isGet || HttpMethod.HEAD.matches(method)) {
+					long lastModified = ha.getLastModified(request, mappedHandler.getHandler());
+					if (new ServletWebRequest(request, response).checkNotModified(lastModified) && isGet) {
+						return;
+					}
+				}
+				//责任链模式实现一：执行调用链的前置处理
+				if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+					return;
+				}
+				//处理请求
+				mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+				if (asyncManager.isConcurrentHandlingStarted()) {
+					return;
+				}
+				applyDefaultViewName(processedRequest, mv);
+				//责任链模式实现二：执行调用链的前置处理
+				mappedHandler.applyPostHandle(processedRequest, response, mv);
+			}
+			catch (Exception ex) {
+				dispatchException = ex;
+			}
+			catch (Throwable err) {
+				dispatchException = new NestedServletException("Handler dispatch failed", err);
+			}
+			processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+		}
+		catch (Exception ex) {
+			triggerAfterCompletion(processedRequest, response, mappedHandler, ex);
+		}
+		catch (Throwable err) {
+			triggerAfterCompletion(processedRequest, response, mappedHandler,
+					new NestedServletException("Handler processing failed", err));
+		}
+		finally {
+			if (asyncManager.isConcurrentHandlingStarted()) {
+				if (mappedHandler != null) {
+					mappedHandler.applyAfterConcurrentHandlingStarted(processedRequest, response);
+				}
+			}
+			else {
+				if (multipartRequestParsed) {
+					cleanupMultipart(processedRequest);
+				}
+			}
+		}
+	}
+```
+
+HandlerExecutionChain的责任链模式，将需要执行的HandlerInterceptor拦截器，添加在HandlerExecutionChain责任链的interceptorList集合中，然后依次执行HandlerInterceptor相应的处理方法。以preHandle方法为例，在处理方法中，根据返回的处理boolean判断是否要继续进行下面的HandlerInterceptor对象的处理，最终完成整个调用链的拦截处理。HandlerExecutionChain的实现实际上是责任链模式的一种变性用法，它减少了不同处理对象的引用依赖，采用集合的方式来存放处理链对象，降低了耦合度。
+
+```
+	//HandlerExecutionChain的applyPreHandle方法
+	//责任链模式，将处理对象给接收者，并不关心内部如何处理与调用
+	boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response) throws Exception {
+			for (int i = 0; i < this.interceptorList.size(); i++) {
+				HandlerInterceptor interceptor = this.interceptorList.get(i);
+				//调用拦截器的preHandle方法，执行所有拦截器的preHandle处理方法
+				if (!interceptor.preHandle(request, response, this.handler)) {
+					triggerAfterCompletion(request, response, null);
+					return false;
+				}
+				this.interceptorIndex = i;
+			}
+			return true;
+	}
+```
+
+### 积累点
+
+#### 1.restTemplate获取InputStream
+
+```
+ResponseEntity<Resource> entity = rest.postForEntity(url, paramObject, Resource.class);
+InputStream in = entity.getBody().getInputStream();
+byte[] bytes = body == null ? null : StreamUtils.copyToByteArray(in);
+```
+
 ## **SpringBoot 源码启动解析**
+
+### 官方文档
+
+中文推荐文档： https://www.springcloud.cc/spring-boot.html#howto-embedded-web-servers
+
+官方文档：https://docs.spring.io/spring-boot/docs/current/reference/html/index.html
+
+源码下载：https://github.com/spring-projects/spring-boot/tree/2.7.x
+
+### 源码下载搭建
+
+#### 1. gradle下载配置
+
+导入源码后，使用idea的grade构建
+
+gradle下载失败，所以手动安装gradle  https://blog.csdn.net/IAIMY/article/details/128455277
+
+到gradle-wrapper.properties 下查看当前要下载的版本https://services.gradle.org/distributions/  下载-all.zip
+
+配置GRADLE_HOME 系统变量
+
+配置 PATH    %GRADLE_HOME %\bin
+
+#### 2. 修改源码的gradle路径代码
+
+使用阿里云镜像
+
+```
+repositories{
+    //加上阿里云镜像
+    maven { url 'https://maven.aliyun.com/repository/central'}
+    maven { url 'https://maven.aliyun.com/repository/public' }
+}
+```
+
+（1）找到解压的修改springboot项目，修改在项目根路径下的build.gradle
+
+首行添加
+
+```
+buildscript{
+	repositories{
+		maven { url 'https://maven.aliyun.com/repository/central'}
+		maven { url 'https://maven.aliyun.com/repository/public' }
+	}
+}
+```
+
+allprojects下面添加
+
+```
+allprojects {
+	group "org.springframework.boot"
+
+	repositories {
+		maven { url 'https://maven.aliyun.com/repository/central'}
+		maven { url 'https://maven.aliyun.com/repository/public' }
+		mavenCentral()
+```
+
+（2）修改项目根路径下的settings.gradle
+
+首行
+
+```
+pluginManagement {
+	repositories {
+		maven { url 'https://maven.aliyun.com/repository/central'}
+		maven { url 'https://maven.aliyun.com/repository/public' }
+```
+
+注释下面一行
+
+```
+plugins {
+	id "com.gradle.enterprise" version "3.12.5"
+//	id "io.spring.ge.conventions" version "0.0.13"
+}
+```
+
+（3）修改项目buildSrc下的build.gradle
+
+```
+plugins {
+	id "java-gradle-plugin"
+//	id "io.spring.javaformat" version "${javaFormatVersion}"
+	id "checkstyle"
+}
+
+repositories {
+	maven { url 'https://maven.aliyun.com/repository/central'}
+	maven { url 'https://maven.aliyun.com/repository/public' }
+	mavenCentral()
+	gradlePluginPortal()
+}
+
+```
+
+（4）修改buildSrc路径下的settings.gradle
+
+```\
+pluginManagement {
+	repositories {
+		maven { url 'https://maven.aliyun.com/repository/central'}
+		maven { url 'https://maven.aliyun.com/repository/public' }
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+```
+
+（5）修改gradle/wrapper/gradle-wrapper.properties
+
+这里后面的路径是你的压缩包，位置要和gradle解压包一致
+
+```
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+#distributionUrl=https\://services.gradle.org/distributions/gradle-7.6.1-bin.zip
+distributionUrl=file:///D:/ideaProject/source-code/gradle-7.6.1-all.zip
+networkTimeout=10000
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+```
+
+（6）IDEA中设置gradle下载文件路径
+
+#### 3. 刷新依赖
+
+如果idea右侧没有gradle选项，鼠标右键build.gradle文件，选择improt gradleProject
+
+执行命令   gradle build --refresh-dependencies  下载依赖等待很久很久
+
+然后点击刷新按钮，继续刷新
+
+#### 4. 启动流程
+
+运行 Hibernate52Application 
 
 ### SpringApplicaiton对象
 
@@ -1110,6 +1558,8 @@ spring启动的图案
 
 #### 刷新容器【关键】 - IOC
 
+refreshContext()这个会刷新其他嵌入的插件，比如elasticJob，sharding-jdbc，hikariDataSource，springdata-jpa
+
 		/**
 		 * 刷新应用程序上下文
 		 *
@@ -1247,6 +1697,82 @@ protected ConfigurableApplicationContext createApplicationContext() {
 
 获取到对应上下文环境的属性值、也可以往上下文中设置属性和参数
 
-7.**postContruct 初始化**
-初始化PostConstruct 或者 elasticJob 等加入的类
-AbstractApplicationContext.refresh()  -> this.finishBeanFactoryInitialization(beanFactory);
+### 积累点
+
+#### 1. 加载到容器 beanFactory里的bean查看在哪里？
+
+```
+ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+String[] beanDefinitionNames = context.getBeanDefinitionNames();
+Arrays.stream(beanDefinitionNames).forEach(System.out::println);
+```
+
+DefaultListableBeanFactory.getBeanDefinitionNames
+
+#### 2. 容器循环依赖
+
+SpringBootApplication.refreshContext()  ->
+
+AbstractApplicationContext.refresh()  -> finishBeanFactoryInitialization  -> beanFactory.preInstantiateSingletons()
+
+@Lazy加载bean即可
+
+#### 3. 获取项目的环境变量并打印
+
+```
+        System.getenv().forEach((k, v) -> {
+            System.out.println(k + ":" + v);
+        });
+```
+
+#### 4. 加入的依赖bean**实例化时机**
+
+以加入shardingjdbc5.1.2 为例，查看spring-boot实例化shardingjdbc相关bean的过程
+
+会依次创建两个bean，
+
+断点打在  ShardingSphereAutoConfiguration.shardingSphereDataSource  ->
+
+ShardingRuleSpringBootConfiguration.shardingRuleConfiguration
+
+```
+SpringApplication.run() -> this.refreshContext(context);
+AbstractApplicationContext.refresh()  ->  this.finishBeanFactoryInitialization(beanFactory);
+
+getBean:1156, AbstractApplicationContext
+getBean:208, AbstractBeanFactory     bean    &entityManagerFactory  spring自带的bean
+doGetBean:322, AbstractBeanFactory     bean    &entityManagerFactory
+
+getBean:208, AbstractBeanFactory      bean  dataSourceScriptDatabaseInitializer      spring自带的bean
+doGetBean:333, AbstractBeanFactory           bean  dataSourceScriptDatabaseInitializer
+getSingleton:234, DefaultSingletonBeanRegistry        bean  dataSourceScriptDatabaseInitializer
+createBean:542, AbstractAutowireCapableBeanFactory
+doCreateBean:582, AbstractAutowireCapableBeanFactory
+createBeanInstance:1195, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:1352, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:541, ConstructorResolver
+createArgumentArray:791, ConstructorResolver
+resolveAutowiredArgument:887, ConstructorResolver
+resolveDependency:1311, DefaultListableBeanFactory        dataSourceScriptDatabaseInitializer 
+doResolveDependency:1391, DefaultListableBeanFactory      dataSourceScriptDatabaseInitializer  依赖了shardingSphereDataSource
+
+resolveCandidate:276, DependencyDescriptor         shardingSphereDataSource
+getBean:208, AbstractBeanFactory      shardingSphereDataSource
+doGetBean:333, AbstractBeanFactory     shardingSphereDataSource
+getSingleton:234, DefaultSingletonBeanRegistry     shardingSphereDataSource
+lambda$doGetBean$0:335, AbstractBeanFactory            shardingSphereDataSource
+createBean:542, AbstractAutowireCapableBeanFactory
+doCreateBean:582, AbstractAutowireCapableBeanFactory
+createBeanInstance:1195, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:1352, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:638, ConstructorResolver
+instantiate:653, ConstructorResolver
+instantiate:154, SimpleInstantiationStrategy              factoryMethod.invoke(factoryBean, args)
+invoke:498, Method      return ma.invoke(obj, args)     obj=shardingSphereAutoConfiguration
+invoke:43, DelegatingMethodAccessorImpl				这里是cglib的反射，如果是AOP默认是JDK反射
+invoke:62, NativeMethodAccessorImpl
+invoke0:-1, NativeMethodAccessorImpl
+shardingSphereDataSource:-1, ShardingSphereAutoConfiguration$$EnhancerBySpringCGLIB$$c59aed68      
+最终到达ShardingSphereAutoConfiguration初始化shardingSphereDataSource的方法
+```
+
