@@ -384,7 +384,7 @@ ConfigurableListableBeanFactory 是一个接口 , 其 prelnstantiateSingletons�
 
 在 Spring中 ,有两个很容易混淆的类：BeanFactory和 FactoryBean。 BeanFactory : Bean工厂 , 是一个工厂(Factory), 我 们 Spring loC容器的最顶层接口就是这个BeanFactory , 它的作用是管理Bean , 即实例化、定位、配置应用程序中的对象及建立这些对象间的 依赖。
 
-Factory Bean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
+FactoryBean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
 
 当用户使用容器本身时可以使用转义字符来得到FactoryBean本身以区别通过FactoryBean 产生的实例对象和FactoryBean对象本身。在 BeanFactory中通过如下代码定义了该转义字符： String FACTORY BEAN PREFIX ="&";
 
@@ -484,7 +484,7 @@ postProcessAfterInitialization（）
 
 5.整个过程最终调用的是proxyFactory.getProxy（）方法。到这里，
 proxyFactory有JDK和CGLib两种，我们该如何选择呢？使用
-DefaultAopProxyFactory的createAopProxy（）方法：  
+DefaultAopProxyFactory的createAopProxy（）方法：  默认是JDK动态代理，这个在JDK8后也比CGLIB更快
 
 ### AOP - JDK 代理
 
@@ -526,7 +526,6 @@ Spring AOP为了实现Advice的织入，设计了特定的拦截器对这些功�
 扫描对外网关请求，记录日志
 
 ```
-
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -604,7 +603,32 @@ public class CallLogAopAspect {
 }
 ```
 
+```
+@Aspect
+@Component
+public class CheckW3NameAspect {
+    @Autowired
+    private ProxyConfigMemberRepository proxyConfigMemberRepository;
 
+    /**
+     * 切面
+     */
+    @Pointcut("@annotation(CheckW3Name)")
+    public void checkW3Name() {
+    }
+
+    /**
+     * 前切
+     */
+    @Before("checkW3Name()")
+    public void checkPermission() {
+        String w3Name = RequestHolderUtil.getRequestW3Name();
+        if (!proxyConfigMemberRepository.findByW3Name(w3Name).isPresent()) {
+            throw new CommonException(HttpStatus.FORBIDDEN, "no permission");
+        }
+    }
+}
+```
 
 ## spring MVC源码
 
@@ -906,7 +930,111 @@ public void addFormatters(FormatterRegistry registry) // 配置数字类型和�
 
 ```
 
+### 设计模式-责任链模式
 
+Spring MVC中 HandlerExecutionChain
+
+SpringMVC中实际上是基于Servlet的框架，当客户端发送请求到web时，都会进入DispatcherServlet中，然后根据Servlet的生命周期去执行doService方法，在doService方法中有一个关键方法doDispatch，其中就运用到得了责任链模式来对进来的请求进行处理。
+
+```
+	protected void doDispatch(HttpServletRequest request, HttpServletResponse response) throws Exception {
+		HttpServletRequest processedRequest = request;
+		//处理执行链
+		HandlerExecutionChain mappedHandler = null;
+		boolean multipartRequestParsed = false;
+		WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+		try {
+			ModelAndView mv = null;
+			Exception dispatchException = null;
+			try {
+				processedRequest = checkMultipart(request);
+				multipartRequestParsed = (processedRequest != request);
+				//获取处理对象
+				mappedHandler = getHandler(processedRequest);
+				if (mappedHandler == null) {
+					noHandlerFound(processedRequest, response);
+					return;
+				}
+				HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+				String method = request.getMethod();
+				boolean isGet = HttpMethod.GET.matches(method);
+				if (isGet || HttpMethod.HEAD.matches(method)) {
+					long lastModified = ha.getLastModified(request, mappedHandler.getHandler());
+					if (new ServletWebRequest(request, response).checkNotModified(lastModified) && isGet) {
+						return;
+					}
+				}
+				//责任链模式实现一：执行调用链的前置处理
+				if (!mappedHandler.applyPreHandle(processedRequest, response)) {
+					return;
+				}
+				//处理请求
+				mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+				if (asyncManager.isConcurrentHandlingStarted()) {
+					return;
+				}
+				applyDefaultViewName(processedRequest, mv);
+				//责任链模式实现二：执行调用链的前置处理
+				mappedHandler.applyPostHandle(processedRequest, response, mv);
+			}
+			catch (Exception ex) {
+				dispatchException = ex;
+			}
+			catch (Throwable err) {
+				dispatchException = new NestedServletException("Handler dispatch failed", err);
+			}
+			processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);
+		}
+		catch (Exception ex) {
+			triggerAfterCompletion(processedRequest, response, mappedHandler, ex);
+		}
+		catch (Throwable err) {
+			triggerAfterCompletion(processedRequest, response, mappedHandler,
+					new NestedServletException("Handler processing failed", err));
+		}
+		finally {
+			if (asyncManager.isConcurrentHandlingStarted()) {
+				if (mappedHandler != null) {
+					mappedHandler.applyAfterConcurrentHandlingStarted(processedRequest, response);
+				}
+			}
+			else {
+				if (multipartRequestParsed) {
+					cleanupMultipart(processedRequest);
+				}
+			}
+		}
+	}
+```
+
+HandlerExecutionChain的责任链模式，将需要执行的HandlerInterceptor拦截器，添加在HandlerExecutionChain责任链的interceptorList集合中，然后依次执行HandlerInterceptor相应的处理方法。以preHandle方法为例，在处理方法中，根据返回的处理boolean判断是否要继续进行下面的HandlerInterceptor对象的处理，最终完成整个调用链的拦截处理。HandlerExecutionChain的实现实际上是责任链模式的一种变性用法，它减少了不同处理对象的引用依赖，采用集合的方式来存放处理链对象，降低了耦合度。
+
+```
+	//HandlerExecutionChain的applyPreHandle方法
+	//责任链模式，将处理对象给接收者，并不关心内部如何处理与调用
+	boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response) throws Exception {
+			for (int i = 0; i < this.interceptorList.size(); i++) {
+				HandlerInterceptor interceptor = this.interceptorList.get(i);
+				//调用拦截器的preHandle方法，执行所有拦截器的preHandle处理方法
+				if (!interceptor.preHandle(request, response, this.handler)) {
+					triggerAfterCompletion(request, response, null);
+					return false;
+				}
+				this.interceptorIndex = i;
+			}
+			return true;
+	}
+```
+
+### 积累点
+
+#### 1.restTemplate获取InputStream
+
+```
+ResponseEntity<Resource> entity = rest.postForEntity(url, paramObject, Resource.class);
+InputStream in = entity.getBody().getInputStream();
+byte[] bytes = body == null ? null : StreamUtils.copyToByteArray(in);
+```
 
 ## **SpringBoot 源码启动解析**
 
@@ -1569,15 +1697,82 @@ protected ConfigurableApplicationContext createApplicationContext() {
 
 获取到对应上下文环境的属性值、也可以往上下文中设置属性和参数
 
-#### 积累点
+### 积累点
 
-##### 1. 加载到容器 beanFactory里的bean查看在哪里？
-
-SpringApplication.contxt.beanFactory.mergedBeanDefinitions
-
-可以点击evaluate，查看容器是否包含某个bean
+#### 1. 加载到容器 beanFactory里的bean查看在哪里？
 
 ```
-((DefaultListableBeanFactory((AnnotationConfigServletWebServerApplicationContext)context).beanFactory).mergedBeanDefinitions.containsKey("shardingDataSource");
+ConfigurableApplicationContext context = SpringApplication.run(Application.class, args);
+String[] beanDefinitionNames = context.getBeanDefinitionNames();
+Arrays.stream(beanDefinitionNames).forEach(System.out::println);
+```
+
+DefaultListableBeanFactory.getBeanDefinitionNames
+
+#### 2. 容器循环依赖
+
+SpringBootApplication.refreshContext()  ->
+
+AbstractApplicationContext.refresh()  -> finishBeanFactoryInitialization  -> beanFactory.preInstantiateSingletons()
+
+@Lazy加载bean即可
+
+#### 3. 获取项目的环境变量并打印
+
+```
+        System.getenv().forEach((k, v) -> {
+            System.out.println(k + ":" + v);
+        });
+```
+
+#### 4. 加入的依赖bean**实例化时机**
+
+以加入shardingjdbc5.1.2 为例，查看spring-boot实例化shardingjdbc相关bean的过程
+
+会依次创建两个bean，
+
+断点打在  ShardingSphereAutoConfiguration.shardingSphereDataSource  ->
+
+ShardingRuleSpringBootConfiguration.shardingRuleConfiguration
+
+```
+SpringApplication.run() -> this.refreshContext(context);
+AbstractApplicationContext.refresh()  ->  this.finishBeanFactoryInitialization(beanFactory);
+
+getBean:1156, AbstractApplicationContext
+getBean:208, AbstractBeanFactory     bean    &entityManagerFactory  spring自带的bean
+doGetBean:322, AbstractBeanFactory     bean    &entityManagerFactory
+
+getBean:208, AbstractBeanFactory      bean  dataSourceScriptDatabaseInitializer      spring自带的bean
+doGetBean:333, AbstractBeanFactory           bean  dataSourceScriptDatabaseInitializer
+getSingleton:234, DefaultSingletonBeanRegistry        bean  dataSourceScriptDatabaseInitializer
+createBean:542, AbstractAutowireCapableBeanFactory
+doCreateBean:582, AbstractAutowireCapableBeanFactory
+createBeanInstance:1195, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:1352, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:541, ConstructorResolver
+createArgumentArray:791, ConstructorResolver
+resolveAutowiredArgument:887, ConstructorResolver
+resolveDependency:1311, DefaultListableBeanFactory        dataSourceScriptDatabaseInitializer 
+doResolveDependency:1391, DefaultListableBeanFactory      dataSourceScriptDatabaseInitializer  依赖了shardingSphereDataSource
+
+resolveCandidate:276, DependencyDescriptor         shardingSphereDataSource
+getBean:208, AbstractBeanFactory      shardingSphereDataSource
+doGetBean:333, AbstractBeanFactory     shardingSphereDataSource
+getSingleton:234, DefaultSingletonBeanRegistry     shardingSphereDataSource
+lambda$doGetBean$0:335, AbstractBeanFactory            shardingSphereDataSource
+createBean:542, AbstractAutowireCapableBeanFactory
+doCreateBean:582, AbstractAutowireCapableBeanFactory
+createBeanInstance:1195, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:1352, AbstractAutowireCapableBeanFactory
+instantiateUsingFactoryMethod:638, ConstructorResolver
+instantiate:653, ConstructorResolver
+instantiate:154, SimpleInstantiationStrategy              factoryMethod.invoke(factoryBean, args)
+invoke:498, Method      return ma.invoke(obj, args)     obj=shardingSphereAutoConfiguration
+invoke:43, DelegatingMethodAccessorImpl				这里是cglib的反射，如果是AOP默认是JDK反射
+invoke:62, NativeMethodAccessorImpl
+invoke0:-1, NativeMethodAccessorImpl
+shardingSphereDataSource:-1, ShardingSphereAutoConfiguration$$EnhancerBySpringCGLIB$$c59aed68      
+最终到达ShardingSphereAutoConfiguration初始化shardingSphereDataSource的方法
 ```
 
