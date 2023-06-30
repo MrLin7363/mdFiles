@@ -483,7 +483,7 @@ public TableRule(ShardingTableRuleConfiguration tableRuleConfig, Collection<Stri
 
 解析如  ds1.table_$->{2023..2033}$->{(1..12).collect{t ->t.toString().padLeft(2,'0')}}${['01', '16']}
 
-使用源码获取表名，自己实现自动建表等操作
+**使用源码解析获取表名，自己实现自动建表等操作**
 
 ```
     @Resource
@@ -697,9 +697,9 @@ ShardingSphereSchema的初始化会去检查分表规则的第一张表是否建
 | -------------------------------- | ------- | -------------------------------------------------- | ----- |
 | sql-show (?)                     | boolean |                                                    |       |
 
-**解决方案：**
+##### **解决方案：**
 
-由于从3月份开始分表，所以一开始未建立order_202301，建表即可
+由于从3月份开始分表，所以一开始未建立**order_202301，建表**即可
 
 在shardingjdbc 4 没有这个问题
 
@@ -740,3 +740,37 @@ public static Map<String, SchemaMetaData> load(Collection<SchemaMetaDataLoaderMa
                 var10000.ifPresent(result::add);
             }
 ```
+
+#### 2. 解析获取表名
+
+```
+@Component
+public class ShardingData {
+    @Resource
+    private AlgorithmProvidedShardingRuleConfiguration ruleConfiguration;
+
+    /**
+     * init tables
+     */
+    @PostConstruct
+    public void initTables() {
+        Map<String, List<String>> tablesMap = new HAshMap();
+        List<String> tableList = new InlineExpressionParser(
+            ruleConfiguration.getTables().stream().findFirst().get().getActualDataNodes()).splitAndEvaluate();
+
+        List<String> tableNameList = tableList.stream()
+            .map(t -> t.substring(t.indexOf('.') + 1))
+            .collect(Collectors.toList());
+		
+		// 每年24张表
+        tableNameList.forEach(tableName -> {
+            String year = tableName.substring(20, 24);
+            if (!tablesMap.containsKey(year)) {
+                tablesMap.put(year, new LinkedList<>());
+            }
+            tablesMap.get(year).add(tableName);
+        });
+    }
+}
+```
+
