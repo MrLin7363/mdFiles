@@ -18,9 +18,41 @@ idea compile指令  默认去掉ssl验证  -Dmaven.wagon.http.ssl.insecure=true 
 
 #### 1.3 镜像未配置
 
-1.4
-
 distributionManagement 表示项目打包成库文件后要上传到仓库地址
+
+#### 1.4 包没有删除干净
+
+ This failure was cached in the local repository and resolution is not reattempted until the update interval of central-product has elapsed or updates are forced
+
+由于第一次没拉下来包，存在.update文件， 不单单是引入的pom的jar包，比如这个，包含了很多jar包，有多个update
+
+```
+<dependency>
+    <groupId>org.apache.shardingsphere</groupId>
+    <artifactId>shardingsphere-jdbc-core-spring-boot-starter</artifactId>
+    <version>5.2.1</version>
+</dependency>
+```
+
+```
+<repositories>
+    <repository>
+    <id>rdc-releases</id>
+        <url>https://xxx/</url>
+        <releases>
+          <enabled>true</enabled>
+          <updatePolicy>always</updatePolicy>
+          <!--always、daily、interval、never-->
+        </releases>
+        <snapshots>
+          <enabled>false</enabled>
+          <updatePolicy>always</updatePolicy>
+        </snapshots>
+  </repository>
+</repositories>
+```
+
+updatePolicy表示maven从远处仓库检查更新的频率，默认值是daily，表示Maven每天检查一次。其他可用的值包括：never-从不检查更新；always-每次构建都检查更新；interval：X-每隔X分钟检查一次更新。
 
 ### 2.idea maven插件,跳过测试
 
@@ -427,3 +459,41 @@ pluginRepositories 表示插件的下载仓库地址，字段和用法与reposit
     </pluginRepositories>
 ```
 
+### 6. setting结构
+
+```
+<settings ...>
+    <localRepository/>    <!--本地仓库路径-->
+    <interactiveMode/>    <!--是否需要和用户交互，默认true，一般无需修改-->
+    <usePluginRegistry/>  <!--是否通过pluginregistry.xml独立文件配置插件，默认false,一般直接配置到pom.xml-->
+    <offline/>            <!--是否离线模式，默认false，如果不想联网，可以开启-->
+    <pluginGroups/>       <!--配置如果插件groupid未提供时自动搜索，一般很少配置-->
+    <servers/>            <!--配置远程仓库服务器需要的认证信息，如用户名和密码-->
+    <mirrors/>            <!--为仓库列表配置镜像列表-->
+    <proxies/>            <!--配置连接仓库的代理-->
+    <profiles/>           <!--全局配置项目构建参数列表，一般通过它配置特定环境的定制化操作-->
+    <activeProfiles/>     <!--手工激活profile，通过配置id选项完成激活-->
+    <activation/>         <!--profile的扩展选项，指定某些条件下自动切换profile配置-->
+    <properties/>         <!--在配置文件中声明扩展配置项-->
+    <repositories/>       <!--配置远程仓库列表，用于多仓库配置-->
+    <pluginRepositories/> <!--配置插件仓库列表-->
+</settings>
+```
+
+## 三、配置相关
+
+### 1. 项目转成maven项目
+
+pom.xml右键 Add as maven Project
+
+### 2. POM相关
+
+#### 2.1 packaging关键字
+
+packaging标签有3种配置：
+
+```java
+<packaging>pom</packaging>  // 一般用于父级目录引用
+<packaging>jar</packaging>  // 可执行
+<packaging>war</packaging>  // 不需要下载其他依赖包，类型以前的前后端不分离的项目，在容器（Tomcat、Jetty等)上部署
+```
