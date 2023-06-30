@@ -1,3 +1,5 @@
+廖雪峰  https://www.liaoxuefeng.com/wiki/1252599548343744/1282384941023266
+
 ## 一、基础类
 
 ### DecimalFormat
@@ -96,6 +98,7 @@ Error（错误）
 程序在执行过程中所遇到的硬件或操作系统的错误。错误对程序而言是致命的，将导致程序无法运行。常见的错误有内存溢出，jvm虚拟机自身的非正常运行，calss文件没有主方法。程序本生是不能处理错误的，只能依靠外界干预。Error是系统内部的错误，由jvm抛出，交给系统来处理。
 
      Exception（异常）
+
 是程序正常运行中，可以预料的意外情况。比如数据库连接中断，空指针，数组下标越界。异常出现可以导致程序非正常终止，也可以预先检测，被捕获处理掉，使程序继续运行。
 
  
@@ -103,9 +106,11 @@ Error（错误）
 EXCEPTION（异常）按照性质，又分为编译异常（可检测）和运行时异常（不可检测）。
 
      编译时异常：
+
 又叫可检查异常，通常时由语法错和环境因素（外部资源）造成的异常。比如输入输出异常IOException，数据库操作SQLException。其特点是，Java语言强制要求捕获和处理所有非运行时异常。通过行为规范，强化程序的健壮性和安全性。
 
      运行时异常：
+
 又叫不检查异常RuntimeException，这些异常一般是由程序逻辑错误引起的，即语义错。比如算术异常，空指针异常NullPointerException，下标越界IndexOutOfBoundsException。运行时异常应该在程序测试期间被暴露出来，由程序员去调试，而避免捕获。
 
 #### Java常见异常
@@ -417,6 +422,24 @@ public class VirtualGoodsOrderChain {
 }
 ```
 
+也可以写一个抽象类把所有的抽象链条的公共代码逻辑抽出来
+
+```
+public abstract class AbstractChains {
+    abstract List<ChainInterface> getChains();
+
+    public void doFilter(Request request, Response response, ProcessControl processControl) {
+        for (ChainInterface chainInterface : getChains()) {
+        	// 
+            if (processControl.isDone()) {
+                return;
+            }
+            chainInterface.handle(request, response, processControl);
+        }
+    }
+}
+```
+
 #### java版本
 
 ```
@@ -712,7 +735,7 @@ public PaymentConfig getPaymentConfig(String bizCode,String channel){
 
 ## 六、JVM
 
-#### 监控不到本地JAVA程序
+### 1. 监控不到本地JAVA程序
 
 win+R 输入 %TMP%\
 
@@ -730,4 +753,347 @@ JAVA程序线程才能输入到这个文件夹被监控到
 
 -XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=512m
 
+```
+-XX:+PrintGCDetails
+-Xmx1g
+-Xms1g
+-XX:+UseConcMarkSweepGC
+-XX:+UseParNewGC   
+```
+
+parNew年轻代， CMS年老代上面配置
+
 **visualVM监控工具**
+
+### 2. GC日志
+
+要查看gc日志，那么首先得把gc日志进行输出，在JVM启动的时候添加参数：
+
+-XX:+PrintGCDetails 打印GC日志细节
+
+-XX:+PrintGCTimeStamps 打印GC日志时间
+
+![img](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9tbWJpei5xcGljLmNuL21tYml6X3BuZy9EbnRjb3NPUVRUNWNHMXNBRmUxYmljSEUzUmd5T1RqOUM1UTAySndlbFluNFN6RkM4ZDc4eUo4QThuWnVPMW1mMndRRWdMa3RONVdmajhNTklBSGlhR1N3LzY0MA?x-oss-process=image/format,png)
+
+
+
+#### 2.1 parNew+CMS日志
+
+parNew年轻代， CMS年老代，这里年轻代 8:1:1:1  年轻代共300m，年老代700m，堆1g大
+
+```
+-XX:+PrintGCDetails
+-Xmx1g
+-Xms1g
+-XX:+UseConcMarkSweepGC
+-XX:+UseParNewGC   
+```
+
+**parNew**
+
+```
+[GC (Allocation Failure) [ParNew: 279616K->23307K(314560K), 0.0126343 secs] 279616K->23307K(1013632K), 0.0126996 secs] [Times: user=0.00 sys=0.02, real=0.01 secs] 
+```
+
+最前面的`2019-03-01T13:38:04.037+0800: 0.867:`是固定的，`2019-03-01T13:38:04.037+0800`表示GC发生的日期花间，`0.867`表示本次gc与JVM启动时的相对时间，单位为秒。
+
+`[GC (Allocation Failure)`这里的`GC`表示这是一次垃圾回收，但并不能单凭这个就判断这是依次Minor GC，下文会说到CMS的标识为`[GC (CMS Initial Mark)`和`[GC (CMS Final Remark)`，同样是`GC`CMS的却是是Major GC；括号中的`Allocation Failure`表示gc的原因，新生代内存不足而导致新对象内存分配失败。
+
+再后面的`[ParNew:`表示本次gc使用的垃圾收集器为ParNew，我们知道ParNew是针对新生代的垃圾收集器，从这可以看出本次gc是Minor GC。后面紧跟着的`34944K->4352K(39296K)`的含义是`GC前该内存区域已使用容量 -> GC后该内存区域已使用容量（该内存区域总容量）`，再后面的`0.0138186 secs`表示该内存区域GC所占用的时间，单位为秒。
+
+再后面的`34944K->6355K(126720K), 0.0141834 secs`表示收集前后整个堆的使用情况，`0.0141834 secs`表示本次GC的总耗时，包括把年轻代的对象转移到老年代的时间。
+
+最后的`[Times: user=0.06 sys=0.00, real=0.02 secs]`表示GC事件在不同维度的耗时，单位为秒。这里面的user、sys和real与Linux的time命令所输出的时间含义一致，分别表示用户态消耗的CPU时间、内核态消耗的CPU时间和操作从开始到结束所经过的等待耗时，例如等待磁盘I/O、等待线程阻塞，而CPU时间不包括这些耗时，但当系统有多CPU或者多核的话，多线程操作会叠加这些CPU时间，所以有时候user或sys时间超过real时间也是完全正确的。
+
+**CMS**
+
+老年代由CMS收集器执行的Major GC相对比较复杂，包括初始标记、并发标记、重新标记和并发清除4个阶段
+
+**初始标记阶段（CMS initial mark）**
+
+```
+[GC (CMS Initial Mark) [1 CMS-initial-mark: 0K(699072K)] 31207K(1013632K), 0.0015626 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+```
+
+`[GC (CMS Initial Mark)`表示这是CMS开始对老年代进行垃圾圾收集的初始标记阶段，该阶段从垃圾回收的“根对象”开始，且只扫描直接与“根对象”直接关联的对象，并做标记，需要暂停用户线程（Stop The Word，下面统称为STW），速度很快。`104208K(126116K)`表示当前老年代的容量为126116K，在使用了104208K时开始进行CMS垃圾回收。可以计算下这个比例，104208 / 126116约等于0.83，可以大概推算出CMS收集器的启动内存使用阈值。
+
+**并发标记阶段（CMS concurrent mark）**
+
+```
+[CMS-concurrent-mark-start]
+[CMS-concurrent-mark: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+[CMS-concurrent-preclean-start]
+[CMS-concurrent-preclean: 0.001/0.001 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+[CMS-concurrent-abortable-preclean-start]
+[CMS-concurrent-abortable-preclean: 0.378/0.492 secs] [Times: user=1.00 sys=0.13, real=0.49 secs] 
+
+```
+
+该阶段进行了细分，但都是和用户线程并发进行的
+ `[CMS-concurrent-mark`表示并发标记阶段，会遍历整个年老代并且标记活着的对象，后面的`0.154/0.155 secs`表示该阶段持续的时间和时钟时间，耗时0.15秒，可见耗时是比较长的。
+ 由于该阶运行的过程中用户线程也在运行，这就可能会发生这样的情况，已经被遍历过的对象的引用被用户线程改变，如果发生了这样的情况，JVM就会标记这个区域为Dirty Card。
+
+`[CMS-concurrent-preclean`阶段会把上一个阶段被标记为Dirty Card的对象以及可达的对象重新遍历标记，完成后清楚Dirty Card标记。另外，一些必要的清扫工作也会做，还会做一些final remark阶段需要的准备工作。
+
+`[CMS-concurrent-abortable-preclean`并发预清理，这个阶段尝试着去承担接下来STW的Final Remark阶段足够多的工作，由于这个阶段是重复的做相同的事情直到发生aboart的条件（比如：重复的次数、多少量的工作、持续的时间等等）之一才会停止。这个阶段很大程度的影响着即将来临的Final Remark的停顿。
+ 从后面的`1.190/1.707 secs`显示这个阶段持续了1秒多的时间，相当的长。
+
+**重新标记阶段（CMS remark）**
+
+```
+[GC (CMS Final Remark) [YG occupancy: 170287 K (314560 K)]
+[Rescan (parallel) , 0.0116904 secs]
+[weak refs processing, 0.0002737 secs]
+[class unloading, 0.0021527 secs]
+[scrub symbol table, 0.0028338 secs]
+[scrub string table, 0.0002261 secs]
+[1 CMS-remark: 0K(699072K)] 170287K(1013632K), 0.0177178 secs] [Times: user=0.17 sys=0.00, real=0.02 secs] 
+```
+
+该阶段同样被细分为多个子阶段
+
+`[GC (CMS Final Remark)`表示这是CMS的重新标记阶段，会STW，该阶段的任务是完成标记整个年老代的所有的存活对象，尽管先前的pre clean阶段尽量应对处理了并发运行时用户线程改变的对象应用的标记，但是不可能跟上对象改变的速度，只是为final remark阶段尽量减少了负担。
+ `[YG occupancy: 24305 K (39296 K)]`表示年轻代当前的内存占用情况，通常Final Remark阶段要尽量运行在年轻代是足够干净的时候，这样可以消除紧接着的连续的几个STW阶段。
+
+`[Rescan (parallel) , 0.0103714 secs]`这是整个final remark阶段扫描对象的用时总计，该阶段会重新扫描CMS堆中剩余的对象，重新从“根对象”开始扫描，并且也会处理对象关联。本次扫描共耗时 0.0103714s。
+
+`[weak refs processing, 0.0006267 secs]`第一个子阶段，表示对弱引用的处理耗时为0.0006267s。
+
+`[class unloading, 0.0368915 secs]`第二个子阶段，表示卸载无用的类的耗时为0.0368915s。
+
+`[scrub symbol table, 0.0486196 secs]`最后一个子阶段，表示清理分别包含类级元数据和内部化字符串的符号和字符串表的耗时。
+
+`[1 CMS-remark: 108093K(126116K)]`表示经历了上面的阶段后老年代的内存使用情况。再后面的`132398K(165412K), 0.1005635 secs`表示final remark后整个堆的内存使用情况和整个final remark的耗时。
+
+**并发清除阶段（CMS concurrent sweep）**
+
+```
+[CMS-concurrent-sweep-start]
+[CMS-concurrent-sweep: 0.000/0.000 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+[CMS-concurrent-reset-start]
+[CMS-concurrent-reset: 0.004/0.004 secs] [Times: user=0.00 sys=0.00, real=0.00 secs] 
+```
+
+该阶段和用户线程并发执行，不会STW，作用是清除之前标记阶段没有被标记的无用对象并回收内存。整个过程分为两个子阶段。
+
+`CMS-concurrent-sweep`第一个子阶段，任务是清除那些没有标记的无用对象并回收内存。后面的参数是耗时，不再多提。
+
+`CMS-concurrent-reset`第二个子阶段，作用是重新设置CMS算法内部的数据结构，准备下一个CMS生命周期的使用。
+
+### 3. 参数配置
+
+#### **内存参数设置**
+
+![img](https://imgconvert.csdnimg.cn/aHR0cHM6Ly9pbWcyMDE4LmNuYmxvZ3MuY29tL2Jsb2cvMTYzNzU4LzIwMTgxMS8xNjM3NTgtMjAxODExMDExMzEzMzExODktNzg4NjczOTMucG5n?x-oss-process=image/format,png)
+
+- -Xms设置堆的最小空间大小。
+- -Xmx设置堆的最大空间大小。
+- -Xmn:设置年轻代大小
+- -XX:NewSize设置新生代最小空间大小。
+- -XX:MaxNewSize设置新生代最大空间大小。
+- -XX:PermSize设置永久代最小空间大小。
+- -XX:MaxPermSize设置永久代最大空间大小。
+- -Xss设置每个线程的堆栈大小
+- -XX:+UseParallelGC:选择垃圾收集器为并行收集器。此配置仅对年轻代有效。即上述配置下,年轻代使用并发收集,而年老代仍旧使用串行收集。
+- -XX:ParallelGCThreads=20:配置并行收集器的线程数,即:同时多少个线程一起进行垃圾回收。此值最好配置与处理器数目相等。
+- -XX:InitialHeapSize   初始化堆大小
+- -XX:MaxHeapSize     最大堆大小
+- -XX:MaxTenuringThreshold    设置垃圾最大年龄。如果设置为0的话，则年轻代对象不经过Survivor区，直接进入年老代。对于年老代比较多的应用，可以提高效率。如果将此值设置为一个较大值，则年轻代对象会在Survivor区进行多次复制，这样可以增加对象再年轻代的存活时间，
+  增加在年轻代即被回收的概率
+
+典型JVM参数配置参考:
+
+- java-Xmx3550m-Xms3550m-Xmn2g-Xss128k
+- -XX:ParallelGCThreads=20
+- -XX:+UseConcMarkSweepGC-XX:+UseParNewGC
+
+-Xmx3550m:设置JVM最大可用内存为3550M。
+
+-Xms3550m:设置JVM促使内存为3550m。此值可以设置与-Xmx相同,以避免每次垃圾回收完成后JVM重新分配内存。
+
+-Xmn2g:设置年轻代大小为2G。整个堆大小=年轻代大小+年老代大小+持久代大小。持久代一般固定大小为64m,所以增大年轻代后,将会减小年老代大小。此值对系统性能影响较大,官方推荐配置为整个堆的3/8。
+
+-Xss128k:设置每个线程的堆栈大小。JDK5.0以后每个线程堆栈大小为1M,以前每个线程堆栈大小为256K。更具应用的线程所需内存大小进行调整。在相同物理内存下,减小这个值能生成更多的线程。但是操作系统对一个进程内的线程数还是有限制的,不能无限生成,经验值在3000~5000 左右。
+
+### 4. 线程数
+
+ThreadStackSize   JVMMemory           能创建的线程数
+默认的325K       -Xms1024m -Xmx1024m    i = 2655
+默认的325K       -Xms1224m -Xmx1224m    i = 2072
+默认的325K       -Xms1324m -Xmx1324m    i = 1753
+默认的325K       -Xms1424m -Xmx1424m    i = 1435
+-Xss1024k        -Xms1424m -Xmx1424m    i = 452
+
+查看线程大小
+
+```
+jinfo -flag ThreadStackSize 43512
+或者
+java -XX:+PrintFlagsFinal -version
+```
+
+配置要使用这个，Xss过时了
+
+```
+-XX:ThreadStackSize=512k
+```
+
+### 5. jstat
+
+jstat主要用来查看当前java进程的各内存区域的使用情况以及GC的次数和总耗时。我最常用的是下面的命令：
+
+jstat -gcutil <pid> [interval] [times]
+可以用[interval]来控制每隔多少毫秒重复输出一次，并通过[times]参数来控制输出的总次数。这两个参数都是可以省略的，如果都省略的话，就只输出一次。
+
+### 6. JvisualVM
+
+#### 6.1 GC插件-idea
+
+visualVM Launcher
+
+visual gc  要在jdk目录里安装
+
+https://www.cnblogs.com/seamy/p/15649609.html
+
+下载插件 org-graalvm-visualvm-modules-visualgc
+
+#### 6.1 线程状态含义
+
+运行（runnable）：正在运行中的线程。
+
+休眠（timed_waiting）：休眠线程，例如调用Thread.sleep方法。
+
+等待（waiting）：等待唤醒的线程，可通过调用Object.wait方法获得这种状态，底层实现是基于对象头中的monitor对象。
+
+驻留（park）：等待唤醒的线程，和等待状态类似，只不过底层的实现方式不同，处于这种状态的例子有线程池中的**空闲线程**，等待获取reentrantLock锁的线程，调用了reentrantLock的condition的await方法的线程等等，底层实现是基于Unsafe类的park方法，在AQS中有大量的应用。
+
+监视（blocked）：等待获取monitor锁的线程，例如等待进入synchronize代码块的线程。
+
+### 7. 计算一个对象的内存大小
+
+##### 7.1 org.apache.lucene工具类
+
+https://www.amazingkoala.com.cn/Lucene/gongjulei/2019/1212/117.html
+
+```
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>8.7.0</version>
+        </dependency>
+```
+
+```
+System.out.println(RamUsageEstimator.shallowSizeOf(webClient)); .//对象
+System.out.println(RamUsageEstimator.sizeOf(new int[] {1}));//基本类型
+```
+
+#### 7.2 jdk8自带API
+
+```
+System.setProperty("java.vm.name","Java HotSpot(TM) ");
+
+System.out.println(ObjectSizeCalculator.getObjectSize(3L));
+```
+
+### 8. 实际优化案例
+
+#### 8.1 restTemplate并发请求
+
+背景：使用jemter进行压测
+
+RestTemplate(new HttpComponentsClientHttpRequestFactory()) 5000请求1s， 并发吞吐量qps只有40-50/s，一个请求60K； >10000请求1s内直接报错
+
+因为还没配置PoolingHttpClientConnectionManager，所以只使用了少部分线程，但是tomcat也新建了200个最大线程，浪费资源。
+
+使用webclient能把吞吐量qps提升到  2500/s，内内存减少一半，支持十万以上并发
+
+因为minor GC 的时候RestTemplate还在挂起的线程很多，因为处理得慢，所以每次minorGC都会增加十几M到
+
+old年老代；
+
+而weblient由于处理得快，每次到老年代没有或者更少
+
+
+## 七、测试
+
+### 1. jmeter
+
+参考  https://blog.csdn.net/hechurui/article/details/109158135
+
+```
+TestPlan	
+	Thread Group
+		HTTP请求
+		查看结果树
+		汇总聚合报告
+		请求头
+		/用户自定义变量
+		/响应断言
+		/响应断言结果
+```
+
+注意，一个TestPlan所有的线程组都会执行，所以可以部分disable Thread Group
+
+#### 1.1 线程组参数解读
+
+**Number of Threads (users)**：虚拟用户数（也就是线程数），一个虚拟用户占用一个进程或线程
+**Ramp-Up Period(in seconds)**：准备时长，设置的虚拟用户数需要多长时间全部启动。
+`例如：如果线程数为20，准备时长为2，那么需要2秒钟启动20个线程，也就是每秒钟启动10个线程`
+**Loop Count**：循环次数每个线程发送请求的次数
+`如果线程数为20，循环次数为100，那么每个线程发送100次请求。总请求数为20*100=2000 。如果勾选了“Forever”，那么所有线程会一直发送请求，一到选择停止运行脚本。`
+**Delay Thread creation until needed**：直到需要时延迟线程的创建
+**Scheduler**：调度器，设置线程组启动的开始时间和结束时间(配置调度器时，需要勾选循环次数为永远)
+**Duration(Seconds)**：持续时间(秒)，测试持续时间，会覆盖结束时间
+**Startup delay(Seconds)**：启动延迟（秒），测试延迟启动时间，会覆盖启动时间
+
+#### 1.2 聚合报告参数解读
+
+1. **Label**：每个 JMeter 的 element都有一个 Name 属性，这里显示的是 Name 属性的值
+2. **#Samples**：请求数——表示这次测试中一共发出了多少个请求
+   `如果模拟10个用户，每个用户迭代10次，那么这里显示100`
+3. **Average**：平均响应时间——默认情况下是单个 Request 的平均响应时间
+   `当使用了 Transaction Controller 时，以Transaction 为单位显示平均响应时间`
+4. **Median**：中位数，也就是 50％ 用户的响应时间
+5. **90% Line**：90％ 用户的响应时间
+6. **99% Line**：99％ 用户的响应时间
+7. **Min**：最小响应时间
+8. **Max**：最大响应时间
+9. **Error%**：错误率——错误请求数/请求总数
+10. **Throughput**：**吞吐量**——默认情况下表示每秒完成的请求数（Request per Second）
+    `当使用了 Transaction Controller 时，也可以表示类似 LoadRunner 的 Transaction per Second 数`
+11. **KB/Sec**：每秒从服务器端接收到的数据量
+
+在实际中我们需要关注的点只有——`#Samples 请求数，Average 平均响应时间，Min 最小响应时间，Max 最大响应时间，Error% 错误率和Throughput 吞吐量`
+
+#### 1.3 并发端口bind问题
+
+java.net.BindException: Address already in use: connect
+
+windows提供给TCP/IP链接的端口为 1024-5000，并且要四分钟来循环回收它们，就导致我们在短时间内跑大量的请求时将端口占满了，导致如上报错
+
+解决方案
+
+1：http连接关闭keep live
+
+2：修改注册表
+
+1.cmd中输入regedit命令打开注册表；
+2.在HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters右键Parameters；
+3.添加一个新的DWORD，名字为MaxUserPort；
+4.然后双击MaxUserPort，输入数值数据为65534，基数选择十进制；
+
+## 八、idea插件推荐
+
+visualVm Launcher 另外加入gc插件
+
+save actions
+
+mybatisX
+
+maven helper
+
+
+
+
+
