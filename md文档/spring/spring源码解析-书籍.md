@@ -1697,7 +1697,7 @@ protected ConfigurableApplicationContext createApplicationContext() {
 
 获取到对应上下文环境的属性值、也可以往上下文中设置属性和参数
 
-### 积累点
+### 源码积累点
 
 #### 1. 加载到容器 beanFactory里的bean查看在哪里？
 
@@ -1776,3 +1776,4 @@ shardingSphereDataSource:-1, ShardingSphereAutoConfiguration$$EnhancerBySpringCG
 最终到达ShardingSphereAutoConfiguration初始化shardingSphereDataSource的方法
 ```
 
+#### 
