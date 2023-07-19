@@ -1,3 +1,10 @@
 教程 https://www.yuque.com/fairy-era/yg511q/hwvr84#7dff6770
 
 教程  https://kuboard.cn/install/v3/install.html
+
+k8s+spring-boot 
+springcloud+spring-boot
+istio+springboot 三种架构对比
+
+还有一种是 springcloud+k8s 不过这种没必要
+解释区别文章  https://m.elecfans.com/article/1894092.html
