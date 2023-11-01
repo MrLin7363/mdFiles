@@ -2,7 +2,7 @@ spring-data-jpa
 
 官方文档  https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#jpa.query-methods
 
-#### sql相关
+### 1. sql相关
 
 ##### 1. **like**
 
@@ -119,9 +119,61 @@ public class StatisticSpecification {
             Predicate predicate = b.like(name.as(String.class), "%赵%");
             // between and
             Predicate timePredicate = b.between(root.get("start"), beginTime, endTime);
+            // in
+            if (CollectionUtils.isNotEmpty(serviceList)) {
+            CriteriaBuilder.In<Object> in = builder.in(root.get("service"));
+            for (Integer service : serviceList) {
+                in.value(service);
+            }
+            predicates.add(in);
+        	}
             return b.and(predicates.toArray(new Predicate[0]));
         };
     }
+}
+```
+
+// 如果要 and or 条件
+
+```
+List<Predicate> predicates = new ArrayList<>();
+predicates.add(builder.between(root.get("start"), reqVo.getBeginTime(), reqVo.getEndTime()));
+if (StringUtils.isNotBlank(reqVo.getSystem())) {
+    predicates.add(builder.equal(root.get("System"), reqVo.getSystem()));
+}
+// and (status=200 or status=300)
+if (isAvoid) {
+    List<Predicate> statusPredicate = new ArrayList<>();
+    statusPredicate.add(builder.equal(root.get("status"), 200));
+    statusPredicate.add(builder.equal(root.get("status"), 300));
+    predicates.add(builder.or(statusPredicate.toArray(new Predicate[0])));
+}
+return builder.and(predicates.toArray(new Predicate[0]));
+```
+
+// 如果要用排序CriteriaQuery
+
+```
+public static Specification<ProxySystem> getSystemSpec(List<Integer> serviceList) {
+        return (root, query, builder) -> getPredicate(serviceList,query, root, builder);
+}
+    
+private static Predicate getPredicate(List<Integer> serviceList, CriteriaQuery<?> query, Root<ProxySystem> root,
+    CriteriaBuilder builder) {
+    List<Predicate> predicates = new ArrayList<>();
+    predicates.add(builder.equal(root.get("is_delete"), 0));
+    if (CollectionUtils.isNotEmpty(serviceList)) {
+        CriteriaBuilder.In<Object> in = builder.in(root.get("service"));
+        for (Integer type : serviceList) {
+            in.value(type);
+        }
+        predicates.add(in);
+    }
+    Predicate[] searchParam = predicates.toArray(new Predicate[0]);
+    query.where(searchParam);
+    // 排序
+    query.orderBy(builder.asc(root.get("service")));
+    return query.getRestriction();
 }
 ```
 
@@ -173,7 +225,54 @@ public void queryUserInfo(QueryUserRequest request) {
 }
 ```
 
-#### spring jpa接入redis配置
+##### 7. 传入对象参数
+
+```
+@Query(value = "select * from table where start>:#{#vo.beginTime} "
+    + " and start<:#{#vo.endTime} ", nativeQuery = true)
+List<xxxxx> getAvoidDetail(@Param("vo") AvoidDetailReqVo vo); // 注意param中名字要和方法名vo一致
+```
+
+### 2. 注解相关
+
+#### 2.1 @MappedSuperclass
+
+**1.**@MappedSuperclass注解只能标准在类上：@Target({java.lang.annotation.ElementType.TYPE})
+
+**2.**标注为@MappedSuperclass的类将不是一个完整的[实体类](https://so.csdn.net/so/search?q=实体类&spm=1001.2101.3001.7020)，他将不会映射到数据库表，但是他的属性都将映射到其**子类**的数据库字段中。
+
+**3.**标注为@MappedSuperclass的类不能再标注@Entity或@Table注解，也无需实现序列化接口。
+
+一般用户公共属性，子类继承此 BaseEntity
+
+```
+@Data
+@ToString
+@MappedSuperclass
+public abstract class BaseEntity {
+    protected long creatorId;
+
+    protected String creator;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    protected Date createTime;
+
+    protected long updaterId;
+
+    protected String updater;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    protected Date updateTime;
+}
+```
+
+#### 2.2 复合主键
+
+
+
+### 3. spring jpa接入redis配置
+
+需要关闭 enabled: false
 
 ```
   data:
@@ -182,14 +281,22 @@ public void queryUserInfo(QueryUserRequest request) {
         enabled: false
   redis:
     cluster:
-      nodes: ${REDIS-CLUSTER-NODES:127.0.0.1:6379}
-      max-redirects: 2
-      timeout: 5000
-      max-attempts: 3
-    password: ${REDIS_PASSWORD:XXX}
+      nodes: ...
+    password: ...
+    lettuce:
+      pool:
+        min-idle: 5
+        max-idle: 50
+        max-wait: 5s
+        time-between-eviction-runs: 2s
+      cluster:
+        refresh:
+          period: 30s
+          adaptive: true
+    timeout: 5s
 ```
 
-#### jpa与hibernate
+### 4. jpa与hibernate
 
 JPA是规范，Hibernate是框架，JPA是持久化规范，而Hibernate实现了JPA
 JPA的主要API都定义在javax.persistence包中。如果你熟悉Hibernate，可以很容易做出对应：
