@@ -630,6 +630,43 @@ public class CheckW3NameAspect {
 }
 ```
 
+## spring 三级缓存
+
+https://www.cnblogs.com/xujq/p/16283608.html
+
+通过三级缓存提前暴露来解决循环依赖的问题
+
+```
+DefaultSingletonBeanRegistry
+private final Map<String, Object> singletonObjects = new ConcurrentHashMap(256); // 一级
+private final Map<String, ObjectFactory<?>> singletonFactories = new HashMap(16);
+private final Map<String, Object> earlySingletonObjects = new ConcurrentHashMap(16);
+```
+
+第一级缓存：也叫单例池，存放已经经历了完整生命周期的Bean对象。
+
+第二级缓存：存放早期暴露出来的Bean对象，实例化以后，就把对象放到这个Map中。（Bean可能只经过实例化，属性还未填充）。
+
+第三级缓存：存放早期暴露的Bean的工厂。
+
+### 对象在三级缓存中的创建流程
+
+A依赖B，B依赖A
+
+1、A创建过程中需要B，于是先将A放到三级缓存，去实例化B。
+
+2、B实例化的过程中发现需要A，于是B先查一级缓存寻找A，如果没有，再查二级缓存，如果还没有，再查三级缓存，找到了A，然后把三级缓存里面的这个A放到二级缓存里面，并删除三级缓存里面的A。
+
+3、B顺利初始化完毕，将自己放到一级缓存里面（此时B里面的A依然是创建中的状态）。然后回来接着创建A，此时B已经创建结束，可以直接从一级缓存里面拿到B，去完成A的创建，并将A放到一级缓存。
+
+为什么需要一个二级缓存？
+
+把A放到一级缓存里了，如果在完成初始化之前，有人来拿走A调用了一下，可能就NPP了啊
+
+所以  让来拿对象的人知道，这个对象是不完整的
+
+把没创建完成的对象，先放到二级缓存里，直到创建完成了，才放到一级缓存中，二级缓存，就是专门解决循环依赖使用
+
 ## spring MVC源码
 
 容器初始化时会建立所有URL和Controller中方法的对应关系，保存
@@ -1776,4 +1813,101 @@ shardingSphereDataSource:-1, ShardingSphereAutoConfiguration$$EnhancerBySpringCG
 最终到达ShardingSphereAutoConfiguration初始化shardingSphereDataSource的方法
 ```
 
-#### 
+## spring-fox源码学习
+
+https://doc.xiaominfo.com/docs/action/springfox/springfox3
+
+这个源码分析写的很好，推荐阅读
+
+### 1. spring plugin
+
+https://doc.xiaominfo.com/docs/action/springfox/springfox3
+
+- 通过插件的方式,不需要更改原来已经稳定的业务代码,对系统稳定性来说尤为重要(系统稳定是基础)
+- 与业务解耦,如果业务发生变化(在某个周期内)，或者有新用户的活动,我们只需要构建我们的业务代码,核心框架层无需更改
+- 程序架构更清晰,分层设计更明显.
+
+### 2. mapstruct
+
+java bean转换工具  https://mapstruct.org/
+
+https://doc.xiaominfo.com/docs/action/springfox/springfox2
+
+### 3. fox启动分析
+
+```
+DocumentationPluginsBootstrapper.start
+```
+
+```
+public class DocumentationContext {
+  //文档类型
+  private final DocumentationType documentationType;
+  //请求接口
+  private final List<RequestHandler> handlerMappings;
+  //接口信息，包括title、描述等信息
+  private final ApiInfo apiInfo;
+  //分组名称
+  private final String groupName;
+  //接口选择器
+  private final ApiSelector apiSelector;
+
+  private final AlternateTypeProvider alternateTypeProvider;
+  //忽略的参数类型
+  private final Set<Class> ignorableParameterTypes;
+  //请求方法对应的响应状态码信息
+  private final Map<RequestMethod, List<ResponseMessage>> globalResponseMessages;
+  //全局参数
+  private final List<Parameter> globalOperationParameters;
+  //分组策略
+  private final ResourceGroupingStrategy resourceGroupingStrategy;
+  //路径Provider
+  private final PathProvider pathProvider;
+  //安全信息
+  private final List<SecurityContext> securityContexts;
+  //安全Scheme
+  private final List<? extends SecurityScheme> securitySchemes;
+  //接口信息
+  private final Ordering<ApiListingReference> listingReferenceOrdering;
+  //接口描述
+  private final Ordering<ApiDescription> apiDescriptionOrdering;
+  //接口信息
+  private final Ordering<Operation> operationOrdering;
+  private final GenericTypeNamingStrategy genericsNamingStrategy;
+  private final Optional<String> pathMapping;
+  private final Set<ResolvedType> additionalModels;
+  //tag分组标签
+  private final Set<Tag> tags;
+  private Set<String> produces;
+  private Set<String> consumes;
+  //主机号
+  private String host;
+  //协议
+  private Set<String> protocols;
+  private boolean isUriTemplatesEnabled;
+  //扩展属性
+  private List<VendorExtension> vendorExtensions;
+  //getter and setter and constructor
+}
+```
+
+文档上下文环境吧,springfox是通过文档上下文(DocumentationContext)最终构建真正的Documenation对象,然后缓存在内存中,最终通过接口`/v2/api-docs`将Documentation对象转换为标准的Swagger对象输出.
+
+## 手写spring
+
+Spring 5核心原理与30个类手写实战 /谭勇德著   -推荐他的 
+
+书籍下载地址 http://www.uzzf.com/soft/685624.html
+
+代码参考  https://github.com/Relph1119/hands-on-spring5/tree/master/own-spring-2.0
+
+
+
+苗雪峰- 学习上面的就不用学这个https://www.liaoxuefeng.com/wiki/1539348902182944
+
+https://github.com/michaelliao/summer-framework
+
+
+
+
+
