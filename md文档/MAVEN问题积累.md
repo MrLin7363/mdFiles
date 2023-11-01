@@ -484,7 +484,7 @@ pluginRepositories 表示插件的下载仓库地址，字段和用法与reposit
 
 ### 1. 项目转成maven项目
 
-pom.xml右键 Add as maven Project
+找到pom.xml右键 Add as maven Project
 
 ### 2. POM相关
 
@@ -496,4 +496,14 @@ packaging标签有3种配置：
 <packaging>pom</packaging>  // 一般用于父级目录引用
 <packaging>jar</packaging>  // 可执行
 <packaging>war</packaging>  // 不需要下载其他依赖包，类型以前的前后端不分离的项目，在容器（Tomcat、Jetty等)上部署
+```
+
+#### 2.2 SNAPSHOT
+
+加上这个后缀，当快照版本更新时，maven每次构建都会拉取最新的，不需要改代码，可能需要规定每次检查快照
+
+mvn clean package -U
+
+```
+<version>1.1-SNAPSHOT</version>
 ```
