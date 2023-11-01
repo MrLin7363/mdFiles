@@ -1,5 +1,7 @@
 spring相关积累
 
+spring相关学习网站（不错）  https://www.baeldung.com/
+
 ## 一、spring-boot
 
 ### 1. 容器相关
@@ -133,6 +135,97 @@ public void cron() {
     System.out.println(new Date());
 }
 ```
+
+### 4. 日志
+
+info/debug/trace 
+
+```
+logging:
+  level:
+    root: debug
+    com:
+      lin: debug  // 定义什么包下日志打印
+```
+
+### 5. 注解
+
+```
+@Profile({"production","uat","test","development"})
+@ConditionalOnProperty(name = "lin.check", havingValue = "true")
+@ConditionalOnMissingBean(UserInterceptor.class)
+
+@Import({JwtValidator.class, RoleValidator.class})
+```
+
+#### 5.1 @Import
+
+```
+public class TestA {
+    private void print() {
+        System.out.println("TestAAAAAA");
+    }
+}
+ 
+public class TestB {
+    private void print() {
+        System.out.println("TestBBBBBB");
+    }
+}
+ 
+public class TestC {
+    private void print() {
+        System.out.println("TestCCCC");
+    }
+}
+```
+
+1. 定义实现 ImportSelector 的类，用来注入 TestB 的实例
+
+```
+public class MySelector implements ImportSelector {
+    @Override
+    public String[] selectImports(AnnotationMetadata annotationMetadata) {
+        return new String[]{"com.demo.TestB"};
+    }
+}
+```
+
+2. 定义实现 ImportBeanDefinitionRegistrar 接口的类，用来注入 TestC 的实例
+
+```
+public class MyRegistrar implements ImportBeanDefinitionRegistrar {
+    public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
+        //构造 BeanDefinition
+        RootBeanDefinition rootBeanDefinition = new RootBeanDefinition(TestC.class);
+        //注册 bean, 并给其取个名字
+        registry.registerBeanDefinition("testC",rootBeanDefinition);
+    }
+}
+```
+
+3. 定义配置类，通过 @Import 注解注入 bean 实例
+
+```
+@Import({TestA.class, MySelector.class, MyRegistrar.class})
+public class ImportDemo {
+}
+```
+
+```
+public class ImportMain {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(ImportDemo.class);
+        String[] beanDefinitionNames = applicationContext.getBeanDefinitionNames();
+        //打印出 IOC 容器里所有的 bean
+        for (String name : beanDefinitionNames) {
+            System.out.println(name);
+        }
+    }
+}
+```
+
+总结：以上共三种方式能够注入bean
 
 ## 二、SpringWeb
 
@@ -355,6 +448,8 @@ public class RestClient {
         TrustStrategy acceptingTrustStrategy = (x509Certificates, authType) -> true;
         SSLContext sslContext = SSLContexts.custom().loadTrustMaterial(null, acceptingTrustStrategy).build();
         SSLConnectionSocketFactory connectionSocketFactory = new SSLConnectionSocketFactory(sslContext,new NoopHostnameVerifier());
+        
+        // NoConnectionReuseStrategy 不保持长连接，keep-alive关闭，每个请求一个连接，避免服务端reset错误Connection reset by peer
         HttpClientBuilder httpClientBuilder = HttpClients.custom()
             .setConnectionReuseStrategy(NoConnectionReuseStrategy.INSTANCE);
         httpClientBuilder.setSSLSocketFactory(connectionSocketFactory);
@@ -396,7 +491,8 @@ public class RestClient {
  
         restTemplate = new RestTemplate(messageConverters);
         restTemplate.setRequestFactory(clientHttpRequestFactory);
-        restTemplate.setErrorHandler(new DefaultResponseErrorHandler());
+        // 异常透传，不然可能过滤，请求返回的异常不能正常显示
+        restTemplate.setErrorHandler(new NoErrorResultErrorHandler());
  
         LOGGER.info("RestClient初始化完成");
     }
@@ -413,6 +509,16 @@ public class RestClient {
 }
 ```
 
+```
+public class NoErrorResultErrorHandler extends DefaultResponseErrorHandler {
+    @Override
+    public void handleError(ClientHttpResponse response) {
+        // 不报错
+    }
+}
+
+```
+
 ##### 2.2.1 httpclient poll源码分析
 
 ```
@@ -424,12 +530,29 @@ RouteSpecificPool pool = this.getPool(route);
 if (pool.getAllocatedCount() < maxPerRoute) {
 ```
 
+##### 2.2.2 Connection reset by peer
+
+https://www.cnblogs.com/yunnick/p/11290429.html
+
+org.apache.http.NoHttpResponseException: 21.153.143.183:8080 failed to respond
+
+通过查询资料发现这个异常与Http Header的一个参数 Connection: Keep-Alive 有关，我们使用的是Apache的httpclient。
+
+- 先给出一个解决方法，很简单，在初始化httpclient时，使用如下配置，主要是NoConnectionReuseStrategy.INSTANCE 参数：
+
+```
+httpclient = HttpClientBuilder.create() 
+.setMaxConnPerRoute(20) 
+.setConnectionReuseStrategy(NoConnectionReuseStrategy.INSTANCE) //解决NoHttpResponseException问题 
+.setMaxConnTotal(200) 
+.build(); 
+```
+
 #### 2.3 基于 OkHttp3
 
 官网 https://square.github.io/okhttp/works_with_okhttp/
 
 ```
-
     @Bean("okHttpClient")
     public RestTemplate okHttpClient() {
         try {
@@ -558,6 +681,54 @@ public void doWithRequest(ClientHttpRequest request) throws IOException {
 }
 ```
 
+#### 2.5 重试interceptor
+
+```
+restTemplate.setInterceptors(Collections.singletonList(new RequestRetryInterceptor(retryTime, retryWait,UnknownHostException.class)));  // 请求重试机制，限定出现 UnknownHostException触发
+```
+
+```
+public class RequestRetryInterceptor implements ClientHttpRequestInterceptor {
+
+    private final int retryTime;
+
+    private final int retryWait;
+
+    private final Class<? extends IOException> retryClass;
+
+    public RequestRetryInterceptor(int retryTime, int retryWait, Class<? extends IOException> retryClass) {
+        this.retryTime = retryTime;
+        this.retryWait = retryWait;
+        this.retryClass = retryClass;
+    }
+
+    @Override
+    public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
+        throws IOException {
+        return executeWithRetry(request, body, execution, retryTime);
+    }
+
+    private ClientHttpResponse executeWithRetry(HttpRequest request, byte[] body, ClientHttpRequestExecution execution,
+        int retryCount) throws IOException {
+        try {
+            return execution.execute(request, body);
+        } catch (IOException e) {
+            // 如果是设置好的的exception，则重试，否则抛出异常
+            if (retryCount > 0 && retryClass.isAssignableFrom(e.getClass())) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(retryWait);
+                } catch (InterruptedException exception) {
+                    LOGGER.error(exception.getMessage());
+                }
+                return executeWithRetry(request, body, execution, retryCount - 1);
+            } else {
+                throw e;
+            }
+        }
+    }
+}
+```
+
 ### 3. webClient
 
 官网： https://docs.spring.io/spring-framework/docs/5.3.28/reference/html/
@@ -565,6 +736,8 @@ public void doWithRequest(ClientHttpRequest request) throws IOException {
 中文指南：https://docs.flydean.com/spring-framework-documentation5/webreactive/2.webclient
 
 好博客：https://blog.csdn.net/zzhongcy/article/details/105412842
+
+reactor-netty  文档  **https://projectreactor.io/docs/netty/release/reference/index.html#faq.connection-closed**
 
 #### 3.0 对比
 
@@ -692,56 +865,89 @@ ResponseEntity<String> doResponse = webClient.method(HttpMethod.GET)
 ```
 @Configuration
 public class WebClientConfig {
-    @Bean("webClient")
-    public WebClient webClient() {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WebClientConfig.class);
+
+    private static final X509TrustManager X509M = new X509TrustManager() {
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {
+        }
+    };
+
+    @Autowired
+    private SettingUtil settingUtil;
+
+    /**
+     * 创建webclient
+     *
+     * @return Map<Integer, WebClient>
+     */
+    @Bean
+    public Map<Integer, WebClient> getWebClient() {
+        Map<Integer, WebClient> clientMap = new HashMap<>();
+        settingUtil.getAllRestSetting()
+            .forEach(setting -> clientMap.putIfAbsent(setting.getReadTimeout(),
+                createWebClient(setting.getConnectTimeout(), setting.getReadTimeout())));
+        return clientMap;
+    }
+
+    private WebClient createWebClient(int connectTimeout, int readTimeout) {
         try {
-            X509TrustManager x509m = new X509TrustManager() {
-                @Override
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                }
-            };
-
-            TrustManager[] trustAllCerts = new TrustManager[] {
-                x509m
-            };
-
-            SslContext sslContext = SslContextBuilder.forClient().trustManager(trustAllCerts[0]).build();
-
-            // ConnectionProvider connectionProvider = ConnectionProvider.builder("fixed")
-            //     .pendingAcquireTimeout(Duration.ofMillis(10000))
-            //     .maxConnections(50)
-            //     .pendingAcquireMaxCount(3000)
-            //     .build();
-
-            // HttpClient httpClient = HttpClient.create(connectionProvider)
-            HttpClient httpClient = HttpClient.create(connectionProvider)
-                .secure(t -> t.sslContext(sslContext))
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(30)));
-            WebClient webClient = WebClient.builder()
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
+            SslContext sslContext = getSslContext();
+            
+            // 自定义线程池-有必要-默认不建线程池，可能会connection reset  
+  			ConnectionProvider provider = ConnectionProvider.builder("webClient").maxConnections(500)
+                .maxIdleTime(Duration.ofSeconds(20)) // 能够防止connection reset
+                .maxLifeTime(Duration.ofSeconds(60))
+                .pendingAcquireTimeout(Duration.ofSeconds(60)).evictInBackground(Duration.ofSeconds(120)).build();
+                
+            SslContext sslContext = getSslContext();
+            HttpClient httpClient = HttpClient.create(provider).secure(t -> t.sslContext(sslContext))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeout * 1000)
+                .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(readTimeout)));
+            WebClient webClient = WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient))
+            	// 默认响应buffer只有256K左右很容易超
+            	.codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
+                // 异常的透传有更好的方案3.8.3  .filter(errorHandler())
                 .build();
-            // .codecs(configurer -> {
-            //     // configurer.customCodecs().register(...);
-            //     configurer.defaultCodecs().maxInMemorySize(2 * 1024 * 1024);
-            // })
             return webClient;
         } catch (SSLException e) {
-            e.printStackTrace();
+            LOGGER.error("createWebClient error", e);
         }
-        return null;
+        throw new CommonException(HttpStatus.INTERNAL_SERVER_ERROR, "cannot create webclient");
+    }
+	
+	// 3.8.1 异常透传场景下怎么处理  异常需要抛出的情况   推荐3.8.3的配置即可
+    private ExchangeFilterFunction errorHandler() {
+        return ExchangeFilterFunction.ofResponseProcessor(clientResponse -> getClientResponseMono(clientResponse));
+    }
+
+    private Mono<ClientResponse> getClientResponseMono(ClientResponse clientResponse) {
+        if (clientResponse.statusCode().is5xxServerError()) {
+            return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new RuntimeException(errorBody)));
+        } else if (clientResponse.statusCode().is4xxClientError()) {
+            return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new RuntimeException(errorBody)));
+        } else {
+            return Mono.just(clientResponse);
+        }
+    }
+
+    private SslContext getSslContext() throws SSLException {
+        TrustManager[] trustAllCerts = new TrustManager[] {X509M};
+        SslContext sslContext = SslContextBuilder.forClient().trustManager(trustAllCerts[0]).build();
+        return sslContext;
     }
 }
-
 ```
 
 #### 3.3 实现代码
@@ -754,9 +960,11 @@ public class WebClientConfig {
             .uri("http://127.0.0.1:8003/xxxx/api/xxx/xx")
             .headers(headers -> headers.addAll(myheaders))
             .bodyValue("asdas")
-            .accept(MediaType.APPLICATION_JSON)
             .acceptCharset(StandardCharsets.UTF_8)
+            // 将上面的资源整合为ResponseSpec
             .retrieve()
+            .onStatus(HttpStatus::isError, clientResponse -> Mono.empty()) // 异常不处理，如果要异常处理，则需要errorHandler
+            // 具体执行请求
             .toEntity(Resource.class)
             .block();
       
@@ -843,6 +1051,83 @@ Map<String, Object> data = Mono.zip(personMono, hobbiesMono, (person, hobbies) -
         .block();
 ```
 
+当接口返回差不多的时候，可以参考下面的并发，不过这种情况可能性很小
+
+```
+    public void doMultiThreadRequest() {
+        List<String> urls = Arrays.asList("http://example.com", "http://example.org", "http://example.net");
+
+        Flux.fromIterable(urls)
+                .parallel()
+                .runOn(Schedulers.elastic())
+                .flatMap(url -> webClient.get().uri(url).retrieve().bodyToMono(String.class))
+                .sequential()
+                .subscribe(response -> {
+                    // 处理响应
+                });
+    }
+```
+
+##### 3.3.4 Mono&Flux
+
+Mon接收单个
+
+Flux接收集合
+
+当响应的结果是JSON时，也可以直接指定为一个Object，WebClient将接收到响应后把JSON字符串转换为对应的对象。比如下面这样。
+
+```
+WebClient webClient = WebClient.create();
+Mono<User> mono = webClient.get().uri("http://localhost:8081/user/1").retrieve().bodyToMono(User.class);
+User user = mono.block();
+```
+
+如果响应的结果是一个集合，则不能继续使用bodyToMono()，应该改用bodyToFlux()，然后依次处理每一个元素，比如下面这样。
+
+```
+String baseUrl = "http://localhost:8081";
+WebClient webClient = WebClient.create(baseUrl);
+Flux<User> userFlux = webClient.get().uri("users").retrieve().bodyToFlux(User.class);
+userFlux.subscribe(System.out::println);
+```
+
+
+如果需要通过Flux取到所有的元素构造为一个List，则可以通过如下的方式获取。
+
+```
+List<User> users = userFlux.collectList().block();
+```
+
+##### 3.3.5 Schedulers
+
+![img](https://pic4.zhimg.com/v2-0af8ce0b8c6ee5023f7f1301bf209d8f_b.webp?consumer=ZHI_MENG)
+
+- 如上当调用线程使用webclient发起请求后，内部会先创建一个Mono响应对象，然后切换到IO线程具体发起网络请求。
+- 调用线程获取到Mono对象后，一般会订阅，也就是设置一个Consumer用来具体处理服务端响应结果。
+- 服务端接受请求后，进行处理，最后把结果写回客户端，客户端接受响应后，使用IO线程把结果设置到Mono对象，从而触发设置的Consumer回调函数的执行。
+
+注：WebClient默认内部使用Netty实现http客户端调用，这里IO线程其实是netty的IO线程，而**netty客户端的IO线程内是不建议做耗时操作的**，因为IO线程是用来轮训注册到select上的channel的数据的，如果阻塞了，那么其他channel的读写请求就会得不到及时处理。所以如果consumer内逻辑比较耗时，建议从IO线程切换到其他线程来做。
+
+那么如何切换那？可以使用publishOn把IO线程切换到自定义线程池进行处理：
+
+```
+resp.publishOn(Schedulers.elastic())//切换到Schedulers.elastic()对应的线程池进行处理
+                .onErrorMap(throwable -> {
+                    System.out.println("onErrorMap:" + throwable.getLocalizedMessage());
+                    return throwable;
+                }).subscribe(s -> System.out.println("result:" + Thread.currentThread().getName() + " " + s));
+
+......block()// 如果是block方式，则不会占用netty的io 默认的CPU个数的selector线程(只负责发请求)，而使用的是服务器tomcat的io线程处理后面逻辑
+```
+
+Reactor中Schedulers提供了几种内置实现：
+
+- Schedulers.elastic():线程池中的线程是可以复用的,按需创建与空闲回收，该调度器适用于 I/O 密集型任务。
+- Schedulers.parallel()：含有固定个数的线程池，该调度器适用于计算密集型任务。
+- Schedulers.single():单一线程来执行任务
+- Schedulers.immediate():立刻使用调用线程来执行。
+- Schedulers.fromExecutor():使用已有的Executor转换为Scheduler来执行任务。
+
 #### 3.5 底层依赖Netty库配置
 
 配置参考 https://stackoverflow.com/questions/71347590/correct-way-of-using-spring-webclient-in-spring-amqp?r=SearchResults
@@ -912,11 +1197,288 @@ DefaultWebClient作为实现类
 class DefaultWebClient implements WebClient {
 ```
 
-#### 3.9 注意事项
+#### 3.7 调用执行源码
+
+##### 3.7.1 调用过程
+
+```
+Mono.block()    
+this.subscribe((Subscriber)subscriber);  // 这行代码会初始化线程
+subscriber.blockingGet() // 真正执行调用
+
+[nio-8004-exec-1] io.netty.channel.nio.NioEventLoop        : instrumented a special java.util.Set into: sun.nio.ch.WindowsSelectorImpl
+......
+```
+
+reactor-http-nio的12个线程在服务刚起来时不会创建，只有当第一次使用webclient的时候才会创建
+
+##### 3.7.2 创建过程
+
+reactor-http-nio的12个线程 创建过程
+
+```
+NioEventLoopGroup
+->
+MultithreadEventLoopGroup
+for 12 循环创建12个EventLoop
+->
+NioEventLoop
+this.openSelector()  每个开启select  dubug可以在这里
+```
+
+请求第一次来
+
+```
+NameResolverProvider.newNameResolverGroup()
+LoopResources  默认selectors数为CPU个数
+int DEFAULT_IO_WORKER_COUNT = Integer.parseInt(System.getProperty("reactor.netty.ioWorkerCount", "" + Math.max(Runtime.getRuntime().availableProcessors(), 4)));
+```
+
+##### 3.7.3 ConnectionProvider
+
+请求调用会调用线程池这个方法
+
+```
+ConnectionProvider.acquire()
+->
+HttpConnectionProvider.acquire()
+->
+NewConnectionProvider..acquire()
+->
+```
+
+
+
+
+
+#### 3.8 异常
+
+##### 3.8.1 WebClientResponseException
+
+weblient 调用错误都是这个异常WebClientResponseException
+
+默认的情况，会把请求返回的body给过滤掉，getMessage会不一样
+
+比如401返回
+
+```
+{
+	"result": "invalid username or password.",
+	"status": "failed"
+}
+```
+
+weblient默认messgae会过滤为   源码WebClientResponseException.initMessage()
+
+```
+401 Unauthorized from POST https://apigw.huawei.com/api/ssoproxysvr/v2/tokens
+```
+
+这样会获取不到返回的 body  如果是**网关**透传服务
+
+##### 3.8.2 透传异常
+
+https://stackoverflow.com/questions/71643036/getting-the-response-body-in-error-case-with-spring-webclient
+
+To suppress the treatment of a status code as an error and process it as a normal response, return Mono.empty() from the function. The response will then propagate downstream to be processed.
+
+1.如果返回 401+body 这段代码会照样返回全部response，但是如果try catch这段代码是接收不到异常的
+
+```
+var response = webClient
+           .method()
+           .retrieve()
+           .onStatus(HttpStatus::isError, clientResponse -> Mono.empty())
+           .toEntity(String.class)
+```
+
+2.这种情况是把respose组合成一个新的exception，这样外层的try catch就能捕获到
+
+```
+.onStatus(HttpStatus::isError, clientResponse -> clientResponse.bodyToMono(String.class)
+    .flatMap(message -> Mono.error(new RuntimeException(message))))
+    .toEntity(bodyClass).block()
+```
+
+3. 其他参考  https://stackoverflow.com/questions/44593066/spring-webflux-webclient-get-body-on-error
+
+```java
+    public Mono<Void> cancel(SomeDTO requestDto) {
+        return webClient.post().uri(SOME_URL)
+                .body(fromObject(requestDto))
+                .header("API_KEY", properties.getApiKey())
+                .retrieve()
+                .onStatus(HttpStatus::isError, response -> {
+                    logTraceResponse(log, response);
+                    return Mono.error(new IllegalStateException(
+                            String.format("Failed! %s", requestDto.getCartId())
+                    ));
+                })
+                .bodyToMono(Void.class)
+                .timeout(timeout);
+    }
+```
+
+And:
+
+```java
+    public static void logTraceResponse(Logger log, ClientResponse response) {
+        if (log.isTraceEnabled()) {
+            log.trace("Response status: {}", response.statusCode());
+            log.trace("Response headers: {}", response.headers().asHttpHeaders());
+            response.bodyToMono(String.class)
+                    .publishOn(Schedulers.elastic())
+                    .subscribe(body -> log.trace("Response body: {}", body));
+        }
+    }
+```
+
+```
+Mono<ClientResponse> responseMono = requestSpec.exchange()
+            .doOnNext(response -> {
+                HttpStatus httpStatus = response.statusCode();
+                if (httpStatus.is4xxClientError() || httpStatus.is5xxServerError()) {
+                    throw new WebClientException(
+                            "ClientResponse has erroneous status code: " + httpStatus.value() +
+                                    " " + httpStatus.getReasonPhrase());
+                }
+            });
+```
+
+###### 3.8.2.1 全局配置
+
+直接在weblient定义的时候就指定抛出异常， 上面的都是在请求的时候做操作，这里可以全局
+
+```
+WebClient webClient = WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient))
+   .filter(errorHandler()).build();
+
+public static ExchangeFilterFunction errorHandler() {
+    return ExchangeFilterFunction.ofResponseProcessor(clientResponse -> {
+        if (clientResponse.statusCode().is5xxServerError()) {
+            return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new RuntimeException(errorBody)));
+        } else if (clientResponse.statusCode().is4xxClientError()) {
+            return clientResponse.bodyToMono(String.class)
+                .flatMap(errorBody -> Mono.error(new RuntimeException(errorBody)));
+        } else {
+            return Mono.just(clientResponse);
+        }
+    });
+}
+```
+
+##### 3.8.3 推荐做法-不抛出异常
+
+```java
+  webClient.post()
+            .uri("http://localhost:9000/api")
+            .body(BodyInserters.fromValue(notification))
+            .retrieve()
+      		// 不抛出异常
+      		.onStatus(HttpStatus::isError, clientResponse -> Mono.empty()))
+      		// 自定义异常，异常信息
+            // .onStatus(HttpStatus::isError, clientResponse -> Mono.error(NotificationException::new))
+            .toBodilessEntity()
+            .block();
+```
+
+#### 3.9 httpClient
+
+weblient封装了httpclient(使用reactor-netty，自己也能发请求)
+
+weblient API更加丰富
+
+#### 3.10 问题记录
+
+##### 3.10.1 线程初始化
 
 reactor-http-nio的12个线程在服务刚起来时不会创建，只有当第一次使用webclient的时候才会创建，如果还没创建，1s并发5000以上可能直接报错
 
 **Pending acquire queue has reached its maximum size of 1000**
+
+##### 3.10.2 failed: Connection reset by peer
+
+```
+recvAddress(..) failed: Connection reset by peer; nested exception is io.netty.channel.unix.Errors$NativeIoException: recvAddress(..) failed: Connection reset by peer
+```
+
+```
+The connection observed an error, the request cannot be retried as the headers/body were sent
+io.netty.channel.unix.Errors$NativeIoException: readAddress(..) failed: Connection reset by peer
+```
+
+**解决方案** ： https://github.com/reactor/reactor-netty/issues/1774
+
+https://projectreactor.io/docs/netty/release/reference/index.html#_connection_pool_2
+
+客户端由于连接池的复用，之前请求成功的连接可能还放在连接池，但是目标服务端过了某段时间就会断开连接；
+
+此时客户端的连接复用，会导致  connection reset by peer
+
+如果一端的Socket被关闭，另一端仍发送数据，发送的第一个数据包引发该异常
+
+1. idleTimeout 表示数据库连接在数据库连接池中最大的闲置时间。描述是 600000 （十分钟）。
+2. maxLifetime 表示连接池中连接最大的声明周期。默认是 1800000 （30分钟）。
+
+**自定义定义线程池**
+
+```
+ConnectionProvider provider = ConnectionProvider.builder("webClient").maxConnections(100)
+    .maxIdleTime(Duration.ofSeconds(20)) // 规定空闲超时时间
+    .maxLifeTime(Duration.ofSeconds(60))
+    .pendingAcquireTimeout(Duration.ofSeconds(60))
+    .evictInBackground(Duration.ofSeconds(120))
+    .build();
+```
+
+**Connection reset by peer的常见原因：**
+
+1，如果一端的Socket被关闭（或主动关闭，或因为异常退出而 引起的关闭），另一端仍发送数据，发送的第一个数据包引发该异常(Connect reset by peer)。
+
+Socket默认连接60秒，60秒之内没有进行心跳交互，即读写数据，就会自动关闭连接。
+
+客户端15分钟超时，而服务端60秒超时，tcp通过3次握手建立连接，4次握手关闭连接，可以看第三个箭头指明的位置，50657端口连接了8090端口。建立连接过程是正常的，而关闭链接时只是服务端一厢情愿的发了个Fin包，客户端没有回应Fin包（此时连接已不可用），如果httpclient使用这个不可用的连接发送请求就会反生not response异常。等过了15分钟，客户端Fin，服务端说，这个连接不存在啊，Reset吧。
+
+2，一端退出，但退出时并未关闭该连接，另一端如果在从连接中读数据则抛出该异常（Connection reset）。
+
+
+
+1）服务器的并发连接数超过了其承载量，服务器会将其中一些连接关闭；(可参考提高服务器并发tcp连接数)
+
+如果知道实际连接服务器的并发客户数没有超过服务器的承载量，则有可能是中了病毒或者木马，引起网络流量异常。可以使用netstat -an查看网络连接情况。
+
+2）客户关掉了浏览器，而服务器还在给客户端发送数据；
+
+3）浏览器端按了Stop；
+
+这两种情况一般不会影响服务器。但是如果对异常信息没有特别处理，有可能在服务器的日志文件中，重复出现该异常，造成服务器日志文件过大，影响服务器的运行。可以对引起异常的部分，使用try…catch捕获该异常，然后不输出或者只输出一句提示信息，避免使用e.printStackTrace();输出全部异常信息。
+
+4）防火墙的问题；
+
+如果网络连接通过防火墙，而防火墙一般都会有超时的机制，在网络连接长时间不传输数据时，会关闭这个TCP的会话，关闭后在读写，就会导致异常。 如果关闭防火墙，解决了问题，需要重新配置防火墙，或者自己编写程序实现TCP的长连接。实现TCP的长连接，需要自己定义心跳协议，每隔一段时间，发送一次心跳协议，双方维持连接。
+
+##### 3.10.3  Exceeded limit on max bytes to buffer
+
+org.springframework.core.io.buffer.DataBufferLimitException: Exceeded limit on max bytes to buffer : 262144
+
+响应体超大小 默认 256K左右
+
+```
+WebClient webClient = WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient))
+    .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))  // 官网一般是2M就够了，自己定义
+    .build();
+```
+
+##### 3.10.4 请求chatset
+
+.acceptCharset(StandardCharsets.UTF_8)  没用，只是请求服务器返回utf-8的编码集
+
+凡是如果服务器返回  application/json   默认还是 iso编码集，如果客户端不自己转码，那么返回给客户就会是乱码，如果是restTemplate那就是     HttpMessageConverter
+
+
+
+
 
 ### 4.消息编解码器-restTemplate
 
@@ -945,6 +1507,7 @@ By default, the following *HttpMessageConverter*s instances are pre-enabled:
 #### 4.2 WebMvcConfigurer
 
 ```
+https://apigw.huawei.com/api/ssoproxysvr
 /**
  *desc: 这个对的调用返回controller 生效
  * 如加上这个，restTemplate返回text/plain;charset=ISO-8859-1 会全部改为  text/plain;charset=UTF-8
@@ -993,9 +1556,9 @@ ResponseEntity<Resource> exchange = restTemplates.exchange("http://127.0.0.1:800
         Resource.class);
 ```
 
-### 7.踩坑
+### 7. 问题记录
 
-#### ISO-8859-1不支持中文
+#### 7.1 ISO-8859-1不支持中文
 
 由于没有配置这个，controller返回 String 字符串会默认是 text/plain;chaset=ios-8859-1
 
@@ -1021,4 +1584,198 @@ public class MessageConfig implements WebMvcConfigurer {
 ```
 @GetMapping(path = "xxx/body", produces = "application/json") // text/plain;chaset=utf-8
 ```
+
+如果是weblient   加上 .acceptCharset(StandardCharsets.UTF_8) 即可
+
+#### 7.2 gzip问题
+
+```
+HttpMessageNotReadableException: JSON parse error: Illegal character ((CTRL-CHAR, code 31)): only regular white space (\r, \n, \t) is allowed between tokens; 
+nested exception is com.fasterxml.jackson.core.JsonParseException: Illegal character ((CTRL-CHAR, code 31)): only regular white space (\r, \n, \t) is allowed between tokens
+```
+
+请求头里包含  accept-encoding = gzip 
+
+A->B->C
+
+B服务加上这个gzip请求头，得到response给A的时候，A会解析不了报错
+
+去掉请求头后，webclient就可以不用加accept=application/json了
+
+#### 7.3 host 503问题
+
+如果用postman调用，然后再调另一个接口时如果继承了postman的header(host) 会返回503  Service not available
+
+去掉请求头即可
+
+### 8. Controller相关
+
+#### 8.1 返回格式增加默认参数
+
+```
+{
+    "msg": "SUCCESS",
+    "code": 200,
+    "data": [
+        {
+            "id": 1,
+            "roleDesktopSign": "DE",
+            "roleDesktopDesc": "开发工程师",
+            "cardLayout": "[{\"h\": \"2\"}]"
+        }
+    ]
+}
+```
+
+默认增加 msg + code , body 就放在data里
+
+```
+@RestControllerAdvice(basePackages = {"com.lin.api"})
+public class ResultResponseAdvice implements ResponseBodyAdvice {
+    @Override
+    public boolean supports(MethodParameter methodParameter, Class aClass) {
+        return true;
+    }
+    @Override
+    public Object beforeBodyWrite(Object returnValue, MethodParameter returnType, MediaType mediaType, Class aClass,
+        ServerHttpRequest request, ServerHttpResponse response) {
+        MyResponse response;
+        // 获取方法的返回类型
+        String returnClassType = returnType.getParameterType().getSimpleName();
+        switch (returnClassType) {
+            case "String":
+            case "AjaxResult":
+                return returnValue;
+            case "void":
+                return MyResponse.success();
+            case "PageDomain":
+                return MyResponse.page((PageDomain) returnValue);
+            default:
+                if (Objects.nonNull(returnValue)) {
+                    result = MyResponse.success(returnValue);
+                } else {
+                    result = MyResponse.success();
+                }
+                return result;
+        }
+    }
+}
+```
+
+#### 8.2 接收text/plain的请求
+
+添加consumes = MediaType.TEXT_PLAIN_VALUE，添加RequestBody 一般只有String或byte[]
+
+如果url一样，springmvc可能找不到报错：Ambiguous handler methods mapped for
+
+所以最好URL也可以不同
+
+```
+@GetMapping("/**")
+public void proxyGet(@RequestParam(required = false) Map<String, String> param,
+    @RequestBody(required = false) Object body, HttpServletRequest request, HttpServletResponse response)
+    throws IOException {
+    proxy(param, body, request, response, HttpMethod.GET);
+}
+```
+
+```
+@GetMapping(value = "/text/**", consumes = MediaType.TEXT_PLAIN_VALUE)
+public void proxyGetText(@RequestParam(required = false) Map<String, String> param,
+    @RequestBody(required = false) byte[] text, HttpServletRequest request, HttpServletResponse response)
+    throws IOException {
+    proxy(param, text, request, response, HttpMethod.GET);
+}
+```
+
+## 三、Spring
+
+### 1. Swagger
+
+#### 1.1 swagger2
+
+```
+<!--Swagger2  原生版本  localhost:8080/swagger-ui/index.html    -->
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger2</artifactId>
+            <version>2.9.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.springfox</groupId>
+            <artifactId>springfox-swagger-ui</artifactId>
+            <version>2.9.2</version>
+        </dependency>
+```
+
+#### 1.2 knife4j
+
+代码仓  https://gitee.com/xiaoym/knife4j
+
+官网  https://doc.xiaominfo.com/
+
+```
+@Configuration
+@Profile("!llt")
+public class WebMvcConfiguration extends WebMvcConfigurationSupport {
+
+
+    /**
+     * 如果继承了WebMvcConfigurationSupport
+     */
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("doc.html").addResourceLocations("classpath:/META-INF/resources/");
+        registry.addResourceHandler("/webjars/**").addResourceLocations("classpath:/META-INF/resources/webjars/");
+        super.addResourceHandlers(registry);
+    }
+}
+```
+
+```
+import com.google.common.collect.Sets;
+
+import springfox.documentation.builders.ApiInfoBuilder;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.service.ApiInfo;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.web.bind.annotation.RestController;
+
+@Configuration
+@EnableSwagger2
+public class SwaggerConfig {
+    /**
+     *  路径${requestBaseUrl}/doc.html, 扫描@RestController的handler
+     *
+     * @return the docket
+     */
+    @Bean
+    public Docket createRestApi() {
+        return new Docket(DocumentationType.SWAGGER_2).apiInfo(apiInfo()).produces(Sets.newHashSet("application/json"))
+            .select().apis(RequestHandlerSelectors.withClassAnnotation(RestController.class)).paths(PathSelectors.any())
+            .build();
+    }
+
+    private ApiInfo apiInfo() {
+        return new ApiInfoBuilder().title("xxxx").description(" xxxxxx接口文档")
+            .version("1.0.0").build();
+    }
+}
+```
+
+#### 1.3 spring-fox源码学习
+
+https://doc.xiaominfo.com/docs/action/springfox/springfox3
+
+查看 spring源码那个文件
+
+
 
