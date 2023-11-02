@@ -774,3 +774,15 @@ public class ShardingData {
 }
 ```
 
+#### 3. information_schema doesn't exist
+
+```
+select distinct table_name as name from INFORMATION_SCHEMA.TABLES 
+where table_name like concat(:tableName,'%') and table_schema =:dbName 
+```
+
+INFORMATION_SCHEMA 在  shardingjdbc  5.1.2不支持，在开发中，4.x支持
+
+背景自动建表先查询不存在的表，再建；
+
+解决方案：直接执行create语句，如果表存在自己会失败
