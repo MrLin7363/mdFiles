@@ -20,7 +20,25 @@ shardingTotalCount 指定任务执行的分片，推荐1片；否则任务会分
 	  overwrite: true  //false会更改不会覆盖之前已经注册的
 ```
 
-### 源码解析
+### POM依赖
+
+```
+<dependency>
+    <groupId>org.apache.shardingsphere.elasticjob</groupId>
+    <artifactId>elasticjob-lite-spring-boot-starter</artifactId>
+    <version>3.0.1</version>
+</dependency>
+```
+
+### 积累点
+
+#### 1. 本地启动不启动job
+
+```
+@SpringBootApplication(exclude = ElasticJobLiteAutoConfiguration.class)
+```
+
+### 源码解析3.0.1
 
 启动springboot项目，Elastic 流程
 
