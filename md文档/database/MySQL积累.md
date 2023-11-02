@@ -2,6 +2,68 @@
 
 官方网站   https://dev.mysql.com/doc/refman/5.7/en/comparison-operators.html#function_coalesce
 
+## Spring-Mysql
+
+### 1. spring.datasource
+
+spring.datasource 下参数
+
+https://blog.csdn.net/u012402190/article/details/53020773
+
+要看参数配置看官网，这下面的可以能过时了，要加 -
+
+https://docs.spring.io/spring-boot/docs/2.7.15/reference/htmlsingle/#data.sql.datasource
+
+```
+datasource:
+  driverClassName: org.mariadb.jdbc.Driver
+  url: jdbc:mariadb: .....
+  username: ...
+  password: ...
+  defaultAutoCommit: false  #是否对sql进行自动提交，进行事务管理的时候往往要关闭jdbc的自动提交功能
+  maxActive: 300  #最大连接数,同一时间可以从池分配的最多连接数量，0时无限制
+  maxIdle: 30   #最大空闲连接,当经过一个高峰时间后，连接池可以慢慢将已经用不到的连接慢慢释放一部分，一直减少到maxIdle为止 ，0时无限制
+  maxWait: 10000 #超时等待时间以毫秒为单位
+  minIdle: 0    # 最小空闲连接,当空闲的连接数少于阀值时，连接池就会预申请去一些连接，以免洪峰来时来不及申请
+  validationQuery: SELECT 1
+  validationQueryTimeout: -1
+  validationInterval: 34000
+  testOnBorrow: true
+  check:
+    interval: 10000
+```
+
+**testOnBorrow、 testOnReturn、testWhileIdle**，他们的意思是当是取得连接、返回连接或连接空闲时是否进行有效性 验证（即是否还和数据库连通的），默认都为false。所以当数据库连接因为某种原因断掉后，再从连接池中取得的连接，实际上可能是无效的连接了，所以， 为了确保取得的连接是有效的，可以把把这些属性设为true。当进行校验时，需要另一个参数：validationQuery，对oracle来说，可以 是：SELECT COUNT(*) FROM DUAL，实际上就是个简单的SQL语句，验证时，就是把这个SQL语句在数据库上跑一下而已，如果连接正常的，当然就有结果返回了。 
+
+**validationQuery**
+
+用来检测连接是否有效的sql，要求是一个查询语句，常用select ‘x’。如果validationQuery为null，testOnBorrow、testOnReturn、testWhileIdle都不会起作用。
+**validationQueryTimeout**
+
+单位：秒，检测连接是否有效的超时时间。底层调用jdbc Statement对象的void setQueryTimeout(int seconds)方法
+
+```
+datasource: 
+   tomcat:
+      test-on-borrow: true
+```
+
+### 2. 保持数据库连接有效
+
+数据库连接池长时间处于间歇状态，导致Linux系统将其断开了，然后抛出了这个错误。
+
+要想解决这个问题，就要主动让我们的连接池保持连接，不被断开。处理方式很简单，只需要加入相关配置即可。
+
+打开`application.properties`文件，加入下面配置：
+
+```
+spring.datasource.testOnBorrow=true
+spring.datasource.validationQuery=SELECT 1
+```
+
+第一句的意思是：自动重连
+第二句的意思是：验证连接的sql语句
+
 ## MySQL-常见问题积累
 
 ### 1. mysql - Json 字段属性搜索
@@ -77,6 +139,22 @@ from -> where -> group by -> select -> order by -> limit
 ### 5. 索引优化积累
 
 联合索引可能比单独的两个索引速度更快
+
+### 6. 窗口函数
+
+mysql 8 引入的
+
+https://www.zhihu.com/tardis/bd/art/92654574?source_id=1001
+
+https://blog.csdn.net/weixin_51146329/article/details/127856341
+
+`window_function_name` 函数可以是聚合函数或者非聚合函数。MySQL8 支持以下几类窗口函数，
+
+1. 序号函数：用于为窗口内的每一行生成一个序号，例如 `ROW_NUMBER()，RANK()，DENSE_RANK()` 等。
+2. 分布函数：用于计算窗口内的每一行在整个分区中的相对位置，例如 `PERCENT_RANK()，CUME_DIST()` 等。
+3. 前后函数：用于获取窗口内的当前行的前后某一行的值，例如 `LAG()，LEAD()` 等。
+4. 头尾函数：用于获取窗口内的第一行或最后一行的值，例如 `FIRST_VALUE()，LAST_VALUE()` 等。
+5. 聚合函数：用于计算窗口内的某个字段的聚合值，例如 `SUM()，AVG()，MIN()，MAX()` 等。
 
 ## SQL积累
 
