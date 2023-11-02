@@ -2,7 +2,7 @@
 
 ## 一、基础类
 
-### DecimalFormat
+### 1. DecimalFormat
 
 1. 以“0”补位时
 
@@ -28,7 +28,7 @@ public static String parseBigDecimalToTwoFraction(BigDecimal bd) {
 }
 ```
 
-### 面向对象
+### 2. 面向对象
 
 封装：JAVA对象的属性
 
@@ -63,13 +63,13 @@ nextld++;
 
 ```
 
-### 反射
+### 3. 反射
 
 Class<?> 任意一个类
 
 Class<?>[] 任意一个接口
 
-### 泛型
+### 4. 泛型
 
 ```
 // 第一个T是方法参数限定，表示（）内的T必须是T类型的
@@ -77,6 +77,14 @@ Class<?>[] 任意一个接口
 // 第三个T和第一个T对应
 public static <T extends Comparable & Serializable> T getMin(T...a){
 ```
+
+### 5. ascll码
+
+转换网站 https://www.asciim.cn/m/tools/convert_ascii_to_string.html
+
+如  /x22 代表 “       \x5C 代表 \
+
+/x是十六进制， 网站里选十六进制输入22就可以展示出来
 
 ## 二、异常
 
@@ -896,8 +904,8 @@ parNew年轻代， CMS年老代，这里年轻代 8:1:1:1  年轻代共300m，�
 - -Xss设置每个线程的堆栈大小
 - -XX:+UseParallelGC:选择垃圾收集器为并行收集器。此配置仅对年轻代有效。即上述配置下,年轻代使用并发收集,而年老代仍旧使用串行收集。
 - -XX:ParallelGCThreads=20:配置并行收集器的线程数,即:同时多少个线程一起进行垃圾回收。此值最好配置与处理器数目相等。
-- -XX:InitialHeapSize   初始化堆大小
-- -XX:MaxHeapSize     最大堆大小
+- -XX:InitialHeapSize   初始化堆大小  = xms   即JVM进行GC垃圾回收时，会对Heap进行清理，会对Heap的内存进行缩容的操作，那么缩容最小是缩到多小，这个值就是缩容可以缩到的最小内存值。
+- -XX:MaxHeapSize     最大堆大小  =xmx
 - -XX:MaxTenuringThreshold    设置垃圾最大年龄。如果设置为0的话，则年轻代对象不经过Survivor区，直接进入年老代。对于年老代比较多的应用，可以提高效率。如果将此值设置为一个较大值，则年轻代对象会在Survivor区进行多次复制，这样可以增加对象再年轻代的存活时间，
   增加在年轻代即被回收的概率
 
@@ -951,7 +959,7 @@ jstat -gcutil <pid> [interval] [times]
 
 visualVM Launcher
 
-visual gc  要在jdk目录里安装
+visual gc  插件要在jdk目录里安装
 
 https://www.cnblogs.com/seamy/p/15649609.html
 
@@ -1014,6 +1022,27 @@ old年老代；
 
 而weblient由于处理得快，每次到老年代没有或者更少
 
+#### 8.2 GC每分钟几百次
+
+原先的JVM参数
+
+```
+-XX:+PrintGCDetails
+-XX:InitialHeapSize=1287651328
+-XX:MaxHeapSize=1287651328
+-XX:MaxNewSize=87244800
+-XX:ThreadStackSize=512k
+-XX:+UseConcMarkSweepGC
+-XX:+UseParNewGC
+```
+
+没有按照8:1:1    
+
+年轻代 8 M 两个survivor 各1M ， 老年代1.1G
+
+年轻代和sucivor太小
+
+-> 策略：尽量在年轻代就回收完，因为年轻代的回收暂停很短暂，所以扩大成8:1:1的模式
 
 ## 七、测试
 
@@ -1083,7 +1112,13 @@ windows提供给TCP/IP链接的端口为 1024-5000，并且要四分钟来循环
 3.添加一个新的DWORD，名字为MaxUserPort；
 4.然后双击MaxUserPort，输入数值数据为65534，基数选择十进制；
 
-## 八、idea插件推荐
+## 八、idea使用相关
+
+官网使用指南 
+
+https://www.jetbrains.com/help/idea/2023.1/viewing-structure-and-hierarchy-of-the-source-code.html?utm_source=product&utm_medium=link&utm_campaign=IU&utm_content=2023.1
+
+### 1. 插件
 
 visualVm Launcher 另外加入gc插件
 
@@ -1093,7 +1128,244 @@ mybatisX
 
 maven helper
 
+alibaba java coding guidelines
+
+codegalance2 -侧边栏
+
+free mybatis plugin
+
+leetcode editor
+
+lombok
+
+maven helper
+
+save action
+
+translation
+
+visualVM Launcher
+
+SequenceDiagram  在类的方法上右键选中能查看序列图
+
+### 2. 快捷键
+
+win+e  最近使用的文件
+
+alt+f7   方法名上使用快捷键 Alt + F7 来查看这个方法在哪些地方被调用过
+
+ctrl + 7  查看类的数据结构
+
+Ctrl + Alt + B/鼠标左键   方法名或者类名上，想直接跳转到某个方法/类的实现类
+
+Ctrl  +  H   BeanDefinition 被哪些类实现
+
+Ctrl + N  搜索
+
+Ctrl + P  查看方法入参结构
+
+ctrl + alt + 鼠标左键   点击类名， 相当于左侧的下箭头，能看到该类被哪个实现
+
+ctrl + alt + < 回到上次光标初
+
+Alt + insert  能查看接口的实现方法，简单的如toString() 添加测试类  也能查看覆写的方法 Ctrl+O 的内容
+
+Ctrl + O  查看接口的实现方法，toString() hashcode()等
+
+Ctrl + Alt + T  鼠标扩住一段代码，能实现一些方法，如包住  try catch
+
+Ctrl + F12  在类中能查找类的方法啥的
+
+Ctrl + Alt + M  抽取代码片段成方法
+
+Ctrl + Q  查看方法，类的介绍
+
+判断语句后直接      .if
+
+一般语句直接转化为打印     .sout   
+
+## 九、开发工具积累
+
+### 1. 渗透测试工具Burp Suite
+
+https://zhuanlan.zhihu.com/p/537832119
+
+## 十、github精华Star
+
+知乎总结： https://zhuanlan.zhihu.com/p/419823562
+
+手写spring  
+
+https://www.liaoxuefeng.com/wiki/1539348902182944
+
+https://github.com/michaelliao/summer-framework
+
+#### 后端技术官网
+
+| 技术                 | 说明                | 官网                                                |
+| -------------------- | ------------------- | --------------------------------------------------- |
+| SpringBoot           | Web应用开发框架     | https://spring.io/projects/spring-boot              |
+| SpringSecurity       | 认证和授权框架      | https://spring.io/projects/spring-security          |
+| MyBatis              | ORM框架             | http://www.mybatis.org/mybatis-3/zh/index.html      |
+| MyBatisGenerator     | 数据层代码生成器    | http://www.mybatis.org/generator/index.html         |
+| Elasticsearch        | 搜索引擎            | https://github.com/elastic/elasticsearch            |
+| RabbitMQ             | 消息队列            | https://www.rabbitmq.com/                           |
+| Redis                | 内存数据存储        | https://redis.io/                                   |
+| MongoDB              | NoSql数据库         | [https://www.mongodb.com](https://www.mongodb.com/) |
+| LogStash             | 日志收集工具        | https://github.com/elastic/logstash                 |
+| Kibana               | 日志可视化查看工具  | https://github.com/elastic/kibana                   |
+| Nginx                | 静态资源服务器      | https://www.nginx.com/                              |
+| Docker               | 应用容器引擎        | [https://www.docker.com](https://www.docker.com/)   |
+| Jenkins              | 自动化部署工具      | https://github.com/jenkinsci/jenkins                |
+| Druid                | 数据库连接池        | https://github.com/alibaba/druid                    |
+| OSS                  | 对象存储            | https://github.com/aliyun/aliyun-oss-java-sdk       |
+| MinIO                | 对象存储            | https://github.com/minio/minio                      |
+| JWT                  | JWT登录支持         | https://github.com/jwtk/jjwt                        |
+| Lombok               | Java语言增强库      | https://github.com/rzwitserloot/lombok              |
+| Hutool               | Java工具类库        | https://github.com/looly/hutool                     |
+| PageHelper           | MyBatis物理分页插件 | http://git.oschina.net/free/Mybatis_PageHelper      |
+| Swagger-UI           | API文档生成工具     | https://github.com/swagger-api/swagger-ui           |
+| Hibernator-Validator | 验证框架            | http://hibernate.org/validator                      |
+
+#### 前端技术官网
+
+| 技术       | 说明                  | 官网                                                  |
+| ---------- | --------------------- | ----------------------------------------------------- |
+| Vue        | 前端框架              | https://vuejs.org/                                    |
+| Vue-router | 路由框架              | https://router.vuejs.org/                             |
+| Vuex       | 全局状态管理框架      | https://vuex.vuejs.org/                               |
+| Element    | 前端UI框架            | [https://element.eleme.io](https://element.eleme.io/) |
+| Axios      | 前端HTTP框架          | https://github.com/axios/axios                        |
+| v-charts   | 基于Echarts的图表框架 | https://v-charts.js.org/                              |
+| Js-cookie  | cookie管理工具        | https://github.com/js-cookie/js-cookie                |
+| nprogress  | 进度条控件            | https://github.com/rstacruz/nprogress                 |
+
+#### 移动端技术官网
+
+| 技术         | 说明             | 官网                                                  |
+| ------------ | ---------------- | ----------------------------------------------------- |
+| Vue          | 核心前端框架     | [https://vuejs.org](https://vuejs.org/)               |
+| Vuex         | 全局状态管理框架 | [https://vuex.vuejs.org](https://vuex.vuejs.org/)     |
+| uni-app      | 移动端前端框架   | [https://uniapp.dcloud.io](https://uniapp.dcloud.io/) |
+| mix-mall     | 电商项目模板     | https://ext.dcloud.net.cn/plugin?id=200               |
+| luch-request | HTTP请求框架     | https://github.com/lei-mu/luch-request                |
+
+## 十一、多线程
+
+一般多线程的题目有以下几种解法
+
+sync(object) + wait + notify
+
+lock  + condition
+
+countdownlanch
+
+cyclibarrier
+
+semaphore
+
+### 11.1 lock  + condition
+
+https://blog.csdn.net/qq_35764295/article/details/108349483
+
+管程这个概念，它能够解决并发编程领域的两大核心问题
+
+1. 互斥：同一时刻只能有一个线程访问共享资源
+2. 同步：线程之间的通信协作
+
+而Java在1.5版本之前，是通过synchronized来实现。到了Java 1.5版本，Java大神Doug Lea的又在Java并发包增加了Lock和Condition两接口来解决这两个问题
+
+为啥synchronized实现了管程，还要添加这两接口重复实现呢？答案很容易猜到，就是synchronized有缺陷，针对互斥与同步都存在缺陷：
+
+1. 无法解决死锁问题
+2. 最多使用一个条件变量
+
+接下来我们就来看看Lock与Condition接口是如何解决这两个问题的
+
+#### 11.1.1 lock接口
+
+只有以下四个条件都发生时才会出现死锁：
+
+1. 互斥：共享资源只能被一个线程占用
+2. 不可抢占：其他线程不能强行另一个线程占有的资源
+3. 占有且等待：线程T1已经取得共享资源X时，在等待共享资源Y时候，不释放共享资源X
+4. 循环等待：线程T1等待线程T2占有的资源，线程T2等待线程T1占有的资源
+
+所以，我们只要破坏其中一个，就可以成功避免死锁的发生，需要注意的是，互斥这个条件我们没办法破坏，因为我们用锁就是为了互斥，而其他三个是可以破坏掉。
+
+Lock是通过下面三个方式来破坏掉 "不可抢占"这个条件的：
+
+1. 非阻塞获取锁：尝试获取锁，如果失败了就立刻返回失败，这样就可以释放已经持有的锁
+2. 响应中断：如果发生死锁后，此线程被其他线程中断，则会释放锁，解除死锁
+3. 支持超时：一段时间内获取不到锁，就返回失败，这样就可以释放之前已经持有的锁
+
+还需要额外注意的一点，当我们使用内置锁时，是不需要考虑释放锁的，而Lock作为一种显示锁，是需要手动释放的。我们一般通过try-finally或try-catch保护锁定时执行的所有代码，并确保在必要时释放锁定，作者也给我们提供了比较常用的使用的方式
+
+#### 11.1.2 condition接口
+
+Lock解决了synchronized不能处理死锁的问题，并对功能进行了扩展，而Condition接口就是解决synchronized只能有一个条件变量的缺点。
+
+同一个synchronize内置锁只对应一个wait set，即当线程调用wait方法时，会把当前线程放入到同一个wait set中，当我们需要根据某些特定的条件来唤醒符合条件的线程时，我们只能先从wait set里唤醒一个线程后，再看是否符合条件，如果不符合条件，则需要将此线程继续wait，然后再去wait set中获取下一个线程再判断是否满足条件。这样会导致许多无意义的cpu开销。
 
 
 
+所以Condition就是为了解决上面问题存在的。每一个锁都会对应多个Condition，每个Condtition都有一个容器来保存相应的等待线程，拿到锁的线程想唤醒某个等待特定条件的线程时，只需要去唤醒对应Condition容器中的线程即可。
+
+
+
+获取一个Condition必须通过Lock的newCondition()方法。下面通过一个有界队列的示例来 深入了解Condition的使用方式。有界队列是一种特殊的队列，当队列为空时，队列的获取操作 将会阻塞获取线程，直到队列中有新增元素，当队列已满时，队列的插入操作将会阻塞插入线 程，直到队列出现“空位”，如代码所示。
+
+       public class BoundedQueue<T> {
+           private Object[] items;
+           // 添加的下标，删除的下标和数组当前数量
+           private int addIndex, removeIndex, count;
+           private Lock lock = new ReentrantLock();
+           private Condition notEmpty = lock.newCondition();
+           private Condition notFull = lock.newCondition();
+           
+       public BoundedQueue(int size) {
+           items = new Object[size];
+       }
+    
+       // 添加一个元素，如果数组满，则添加线程进入等待状态，直到有"空位"
+       public void add(T t) throws InterruptedException {
+           lock.lock();
+           try
+    
+           {
+               while (count == items.length) notFull.await();
+               items[addIndex] = t;
+               if (++addIndex == items.length) addIndex = 0;
+               ++count;
+               notEmpty.signal();
+           } finally
+    
+           {
+               lock.unlock();
+           }
+       }
+    
+       // 由头部删除一个元素，如果数组空，则删除线程进入等待状态，直到有新添加元素 @SuppressWarnings("unchecked")
+       public T remove() throws InterruptedException {
+           lock.lock();
+           try {
+               while (count == 0) notEmpty.await();
+               Object x = items[removeIndex];
+               if (++removeIndex == items.length) removeIndex = 0;
+               --count;
+               notFull.signal();
+               return (T) x;
+           } finally {
+               lock.unlock();
+           }
+       }
+
+#### 11.1.3 Condition如何实现
+
+ConditionObject是同步器AbstractQueuedSynchronizer的内部类，因为Condition的操作需要 获取相关联的锁，所以作为同步器的内部类也较为合理。每个**Condition对象都包含着一个队 列（以下称为等待队列**），该队列是Condition对象实现等待/通知功能的关键。 下面将分析Condition的实现，主要包括：等待队列、等待和通知，下面提到的Condition如 果不加说明均指的是ConditionObject。
+
+## 十二、流式编程
+
+对象嵌套太深：如何优雅判空获取里层对象
+Optional.ofNullable(rspBody).map(TracePageCommRsp::getData).map(PageRspData::getList).orElseGet(Collections::emptyList);
 
