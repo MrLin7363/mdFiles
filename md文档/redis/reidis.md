@@ -14,7 +14,7 @@ redis默认16个数据库，单机模式通过select  0等切换数据库；  �
 
 ### 2. 集群模式-原理
 
-#### 2.1 存储原理：
+#### 2.1 存储原理
 
 redis集群数据存储原理：
 
@@ -52,11 +52,41 @@ redis集群数据获取原理：
 
  Redirected to slot [10313] located at 123.342.234.23:6379
 
+#### 2.3 集群选举原理
+
+https://blog.51cto.com/u_12192/6880456
+
+如果master挂了，需要其他master（二个以上）投票选举挂了的master的从节点为主节点
+
+Redis Cluster 集群选举跟哨兵集群选举跟哨兵集群选举还是不太一样的
+
+在主节点宕机了的时候，它的从节点会向其他的主从节点发出选举，其他的主从节点收到选举的消息之后，会立马向发起者响应(这里响应并不是所有的节点都会去响应，而是只有主节点才会响应)，当发起者收到的响应数过半的时候，发起者会将自己的改为主节点
+
+具体步骤如下：
+
+1.slave发现自己的master变为FAIL
+
+2.将自己记录的集群currentEpoch加1，并广播FAILOVER_AUTH_REQUEST 信息
+
+3.其他节点收到该信息，只有master响应，判断请求者的合法性，并发送FAILOVER_AUTH_ACK，对每一个epoch只发送一次ack
+
+4.尝试failover的slave收集master返回的FAILOVER_AUTH_ACK
+
+5.slave收到超过半数master的ack后变成新Master(这里解释了集群为什么至少需要三个主节点，如果只有两个，当其中一个挂了，只剩一个主节点是不能选举成功的)
+
+#### 2.4 请求原理
+
+只有master节点具有处理请求的能力，slave节点主要是用于节点的高可用
+
+slave广播Pong消息通知其他集群节点。
+
 ## 二、数据结构
 
 ### 1. 常用指令
 
-连接集群  redis-cli -h 7.225.150.145 -p 6379 -a password -c
+连接集群  redis-cli -h 7.225.150.145 -p 6379 -a password -c           
+
+-a可能不安全   redis-cli -h 7.225.150.145 -p 6379 -c   然后-> auth <password>   
 
 1. 查看redis是否是集群模式，info cluster 命令
 
@@ -132,9 +162,15 @@ OK
 (integer) 1
 ```
 
+#### 1.1 注意事项
+
+redis-cli -h 7.225.150.145 -p 6379 -c   如果是集群模式，只连接一台机器，可能某些keys是不在这台机器访问不到的
+
+
+
 ### 2. spring-data-代码实现部分指令
 
-分布式锁
+#### (1) 分布式锁
 
 ```
     public Boolean lock(String key, long expire) {
@@ -165,29 +201,171 @@ OK
 org.springframework.data.redis.connection;
 ```
 
-keys * ... 
+#### (2) 游标迭代器 scan 
+
+有这么一个案例，Redis 服务器存储了海量的数据，其中登录用户信息是以 user_token_id 的形式存储的。运营人员想要当前所有的用户登录信息，然后悲剧就发生了：因为用了 `keys user_token_*` 来查询对应的用户，结果导致 Redis 假死不可用，以至于影响到线上的其他业务接连发生问题。并且这个假死的时间是和存储的数据成正比的，数据量越大假死的时间就越长，导致的故障时间也越长。
+
+如何解决这种查询的情况？
+
+在 Redis 2.8 之前，我们只能使用 keys 命令来查询我们想要的数据，但这个命令存在两个缺点：
+
+1. 此命令没有分页功能，我们只能一次性查询出所有符合条件的 key 值，如果查询结果非常巨大，那么得到的输出信息也会非常多；
+2. keys 命令是遍历查询，因此它的查询时间复杂度是 o(n)，所以数据量越大查询时间就越长。
+
+在 Redis 2.8 时推出了 Scan
+
+```css
+scan cursor [MATCH pattern] [COUNT count]
+```
+
+- cursor：光标位置，整数值，从 0 开始，到 0 结束，查询结果是空，但游标值不为 0，表示遍历还没结束；
+- match pattern：正则匹配字段；
+- count：限定服务器单次遍历的字典槽位数量（约等于），只是对增量式迭代命令的一种提示（hint），并不是查询结果返回的最大数量，它的默认值是 10。
+
+但有两个注意问题
+
+1. 查询的结果为空，但游标值不为 0，表示遍历还没结束；
+2. 如果设置了 count 10000，但返回是不固定的，这是因为 count 只是限定服务器单次遍历的字典槽位数量（约等于），而不是规定返回结果的 count 值。
+
+scan其他命令
+
+1. HScan 遍历字典游标迭代器
+2. SScan 遍历集合的游标迭代器
+3. ZScan 遍历有序集合的游标迭代器
+
+查询规则
+
+- 它可以完整返回开始到结束检索集合中出现的所有元素，也就是在整个查询过程中如果这些元素没有被删除，且符合检索条件，则一定会被查询出来；
+- 它可以保证不会查询出，在开始检索之前删除的那些元素。
+
+缺点：
+
+- 一个元素可能被返回多次，需要客户端来实现去重；
+- 在迭代过程中如果有元素被修改，那么修改的元素能不能被遍历到不确定。
+
+ 
+
+总结：
+
+查询命令：
+
+1. Scan：用于检索当前数据库中所有数据；
+2. HScan：用于检索哈希类型的数据；
+3. SScan：用于检索集合类型中的数据；
+4. ZScan：由于检索有序集合中的数据。
+
+查询注意：
+
+1. Scan 可以实现 keys 的匹配功能；
+2. Scan 是通过游标进行查询的不会导致 Redis 假死；
+3. Scan 提供了 count 参数，可以规定遍历的数量；
+4. Scan 会把游标返回给客户端，用户客户端继续遍历查询；
+5. Scan 返回的结果可能会有重复数据，需要客户端去重；
+6. 单次返回空值且游标不为 0，说明遍历还没结束；
+7. Scan 可以保证在开始检索之前，被删除的元素一定不会被查询出来；
+8. 在迭代过程中如果有元素被修改， Scan 不保证能查询出相关的元素。
 
 ```
-@GetMapping(value = "/patternDelete")
-    public Set<String> patternDeleteCache(String pattern) {
-        Set<String> deleteKeys = (Set<String>) redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
-            ScanOptions scanOptions = ScanOptions.scanOptions().match("*" + pattern + "*").count(1000).build();
-            Cursor<byte[]> scan = connection.scan(scanOptions);
-            Set<String> keys = new HashSet<>();
-            while (scan.hasNext()) {
-                byte[] next = scan.next();
-                keys.add(new String(next));
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>2.9.0</version>
+        </dependency>
+```
+
+单机redis版本
+
+```
+   // count每次扫描的个数
+   public Set<String> getPatternKeys(String pattern, int count) {
+        return redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+            // match different from java
+            ScanOptions scanOptions = ScanOptions.scanOptions().match(pattern).count(count).build();
+            Set<String> result = new HashSet<>();
+            try (Cursor<byte[]> cursor = connection.scan(scanOptions)) {
+                while (cursor.hasNext()) {
+                    byte[] next = cursor.next();
+                    result.add(new String(next, StandardCharsets.UTF_8));
+                }
+            } catch (Exception e) {
+                LOGGER.error("RedisUtils getPatternKeys e={}", e);
             }
-            return keys;
+            return result;
         });
-        if (CollectionUtils.isNotEmpty(deleteKeys)) {
-            redisTemplate.delete(deleteKeys);
-        }
-        return deleteKeys;
     }
 ```
 
-#### (1) bound...Ops和opsFor系列区别
+集群reidis版本
+
+```
+@Component
+public class RedisClusterUtil {
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    public List<String> getPatternKeysCluster(String matchKey) {
+        List<String> result = new ArrayList<>();
+        Map<String, JedisPool> clusterNodes = ((JedisCluster) redisTemplate.getConnectionFactory()
+            .getClusterConnection().getNativeConnection()).getClusterNodes();
+        for (Map.Entry<String, JedisPool> entry : clusterNodes.entrySet()) {
+            //获取单个的jedis对象
+            Jedis jedis = entry.getValue().getResource();
+            // 判断非从节点(因为若主从复制，从节点会跟随主节点的变化而变化)，此处要使用主节点从主节点获取数据
+            if (!jedis.info("replication").contains("role:slave")) {
+                List<String> keys = getScan(jedis, matchKey);
+                if (keys.size() > 0) {
+                    Map<Integer, List<String>> map = new HashMap<>(8);
+                    //接下来的循环不是多余的，需要注意
+                    for (String key : keys) {
+                        // cluster模式执行多key操作的时候，这些key必须在同一个slot上，不然会报:JedisDataException:
+                        // 所以这里把他们汇聚起来，一般如果只查询key可以，不要下面这段代码，直接set集合add keys
+                        int slot = JedisClusterCRC16.getSlot(key);
+                        // 按slot将key分组，相同slot的key一起提交
+                        if (map.containsKey(slot)) {
+                            map.get(slot).add(key);
+                        } else {
+                            List<String> list1 = new ArrayList();
+                            list1.add(key);
+                            map.put(slot, list1);
+                        }
+                    }
+                    for (Map.Entry<Integer, List<String>> integerListEntry : map.entrySet()) {
+                        result.addAll(integerListEntry.getValue());
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    public List<String> getScan(Jedis jedis, String key) {
+        List<String> result = new ArrayList<>();
+        //扫描的参数对象创建与封装,每次游标扫描1000行,这里可以根据业务需求进行修改
+        ScanParams params = new ScanParams().match(key).count(1000);
+        String cursor = "0";
+        ScanResult scanResult = jedis.scan(cursor, params);
+
+        // scan.getStringCursor() 存在 且不是 0 的时候，一直移动游标获取
+        while (scanResult.getStringCursor() != null) {
+            System.out.println("scan " + cursor);
+            result.addAll(scanResult.getResult());
+            String nextCursor = scanResult.getStringCursor();
+            if (!"0".equals(nextCursor)) {
+                scanResult = jedis.scan(nextCursor, params);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+}
+```
+
+#### (3) bound...Ops和opsFor系列区别
 
 ```
     /**获取a，然后获取b，然后删除c，对同一个key有多次操作，按照opsForHash()的写法
@@ -296,6 +474,12 @@ OK
 (integer) 12
 ```
 
+ttl key 过期时间 getExpire()
+
+- The command returns -2 if the key does not exist.
+- The command returns -1 if the key exists but has no associated expire.
+- 返回单位是 s 
+
 ### 4. 计数器
 
 ```
@@ -388,6 +572,7 @@ RedisDesktop这个款工具已经开始收费
 能不用cmd不用cmd，客户端工具好用
 
 这里的界面搜索，能直接搜索全部节点；而且能打开命令行
+
 ## 七、spring-boot配置redis cluster代码
 
 ```
@@ -402,28 +587,60 @@ spring:
     password: myredis
     lettuce:
       pool:
-        min-idle: 0
-        max-active: 8
-        max-wait: -1
-        max-idle: 8
-        enabled: true
+        min-idle: 10 #最小空闲连接
+        max-idle: 20 #最大空闲数
+        max-wait: 2s # 连接池最大阻塞等待时间(使用负值标识没有限制)
+      cluster:
+        refresh:
+          period: 30s
+          adaptive: true  #开启集群拓扑刷新功能，某个节点挂了，能通知到  必须的 springboot2.x默认用lettuce默认不开启,如果是jredis默认开启了
+    timeout: 5s # 连接超时时间
 
 ```
 
 ```
+SpringBoot2.x开始默认使用的Redis客户端由Jedis变成了Lettuce，但是当Redis集群中某个节点挂掉之后，Lettuce将无法继续操作Redis，原因在于此时Lettuce使用的仍然是有问题的连接信息。
+
+实际上，Lettuce支持redis 集群拓扑动态刷新，但是默认并没有开启，SpringBoot在集成Lettuce时默认也没有开启。并且在SpringBoot2.3.0之前，是没有配置项设置Lettuce自动刷新拓扑的。
+
+相关issue：Add configuration to enable Redis Cluster topology refresh
+
+解决方案1：
+升级到SpringBoot2.3.0或以上版本。并添加如下配置项
+
+spring.redis.timeout=60s
+spring.redis.lettuce.cluster.refresh.period=60s
+spring.redis.lettuce.cluster.refresh.adaptive=true
+
+
+lettuce是不会进行“心跳”操作的，也就是说，它不会保持连接，导致了连接超时
+```
+
+```
+import org.springframework.cache.annotation.CachingConfigurerSupport;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
+
+/**
+ *  redis配置
+ * 集群版 Redis缓存配置类
+ */
 @Configuration
-public class RedisConfig {
+@EnableCaching
+public class RedisConfig extends CachingConfigurerSupport
+{
     @Bean
-    @SuppressWarnings("all")
-    public RedisTemplate<String,Object> redisTemplate(RedisConnectionFactory connectionFactory) {
-        RedisTemplate<String, Object> template = new RedisTemplate<>();
+    @SuppressWarnings(value = { "unchecked", "rawtypes" })
+    public RedisTemplate<Object, Object> redisTemplate(RedisConnectionFactory connectionFactory)
+    {
+        RedisTemplate<Object, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
-        Jackson2JsonRedisSerializer serializer = new Jackson2JsonRedisSerializer(Object.class);
-        ObjectMapper om = new ObjectMapper();
-        om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        om.activateDefaultTyping(LaissezFaireSubTypeValidator.instance,ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.WRAPPER_ARRAY);
-        serializer.setObjectMapper(om);
+        FastJson2JsonRedisSerializer serializer = new FastJson2JsonRedisSerializer(Object.class);
 
         // 使用StringRedisSerializer来序列化和反序列化redis的key值
         template.setKeySerializer(new StringRedisSerializer());
@@ -438,5 +655,4 @@ public class RedisConfig {
     }
 }
 ```
-
 
