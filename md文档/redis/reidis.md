@@ -655,4 +655,17 @@ public class RedisConfig extends CachingConfigurerSupport
     }
 }
 ```
+## 九、方案
+
+### 9.1 过期活跃版本统计预热数据
+
+|                    |               |                                                              |
+| ------------------ | ------------- | ------------------------------------------------------------ |
+| 首页访问，预热数据 |               | aop 统计版本PV，uv                                           |
+| set                | 业务优先的set | 指定版本优先级高                                             |
+| uvZset             |               | 前5天内的uvZSet，uv>1                                        |
+| pvZset             |               | 前5天内的pvZSet，pv>2                                        |
+| setAll             | 活跃版本      | 优先取set，再从uvZset和pvZset中取top多少版本，值由redis实时控制；过期监听如果是活跃版本，则同步 |
+| 过期监听           |               | 使用redis的listener, 由于删除策略惰性删除，key过期不会马上监听到，使用定时任务扫描模式key*，这样会监听到过期；                             扫描的时候发现是单机的不行，改为集群cluster扫描模式，由于keys比较少，所以扫描5s内就完成 |
+
 
