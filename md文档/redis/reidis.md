@@ -365,6 +365,67 @@ public class RedisClusterUtil {
 }
 ```
 
+单机和集群选择
+
+```
+    public Set<String> getPatternKeys(String pattern, int count) {
+        // 生产环境单机
+        if (redisConfig.isProd()) {
+            return redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+                ScanOptions scanOptions = ScanOptions.scanOptions().match(pattern).count(count).build();
+                Set<String> result = new HashSet<>();
+                try {
+                    Cursor<byte[]> cursor = connection.scan(scanOptions);
+                    while (cursor.hasNext()) {
+                        byte[] next = cursor.next();
+                        result.add(new String(next, StandardCharsets.UTF_8));
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("RedisUtils getPatternKeys e={}", e);
+                }
+                return result;
+            });
+        } else {
+        	// 测试环境集群
+            return getPatternKeysCluster(pattern, count);
+        }
+    }
+ 
+    private Set<String> getPatternKeysCluster(String matchKey, int count) {
+        Set<String> result = new HashSet<>();
+        Map<String, JedisPool> clusterNodes = ((JedisCluster) redisTemplate.getConnectionFactory()
+            .getClusterConnection().getNativeConnection()).getClusterNodes();
+        for (Map.Entry<String, JedisPool> entry : clusterNodes.entrySet()) {
+            Jedis jedis = entry.getValue().getResource();
+            if (!jedis.info("replication").contains("role:slave")) {
+                List<String> keys = getScan(jedis, matchKey, count);
+                if (keys.size() > 0) {
+                    result.addAll(keys);
+                }
+            }
+        }
+        return result;
+    }
+ 
+    private List<String> getScan(Jedis jedis, String key, int count) {
+        List<String> result = new ArrayList<>();
+        ScanParams params = new ScanParams().match(key).count(count);
+        String cursor = "0";
+        ScanResult scanResult = jedis.scan(cursor, params);
+ 
+        while (scanResult.getStringCursor() != null) {
+            result.addAll(scanResult.getResult());
+            String nextCursor = scanResult.getStringCursor();
+            if (!"0".equals(nextCursor)) {
+                scanResult = jedis.scan(nextCursor, params);
+            } else {
+                break;
+            }
+        }
+        return result;
+    }
+```
+
 #### (3) bound...Ops和opsFor系列区别
 
 ```
@@ -655,6 +716,7 @@ public class RedisConfig extends CachingConfigurerSupport
     }
 }
 ```
+
 ## 九、方案
 
 ### 9.1 过期活跃版本统计预热数据
@@ -663,9 +725,14 @@ public class RedisConfig extends CachingConfigurerSupport
 | ------------------ | ------------- | ------------------------------------------------------------ |
 | 首页访问，预热数据 |               | aop 统计版本PV，uv                                           |
 | set                | 业务优先的set | 指定版本优先级高                                             |
-| uvZset             |               | 前5天内的uvZSet，uv>1                                        |
-| pvZset             |               | 前5天内的pvZSet，pv>2                                        |
+| uvZset             | uv>1          | 前5天内的uvZSet（设置过期时间，扫描时找不到），通过模式匹配scan模糊查找；根据版本，union hyperlog ，然后每个版本 addzSet，最后rangeZset |
+| pvZset             | pv>3          | 前5天内的pvZSet（设置过期时间，扫描时找不到），通过模式匹配scan模糊查找，addzSet，rangeZset |
 | setAll             | 活跃版本      | 优先取set，再从uvZset和pvZset中取top多少版本，值由redis实时控制；过期监听如果是活跃版本，则同步 |
-| 过期监听           |               | 使用redis的listener, 由于删除策略惰性删除，key过期不会马上监听到，使用定时任务扫描模式key*，这样会监听到过期；                             扫描的时候发现是单机的不行，改为集群cluster扫描模式，由于keys比较少，所以扫描5s内就完成 |
+| 过期监听           |               |                                                              |
 
+过期监听： 1. 使用redis的listener, 由于删除策略惰性删除，key过期不会马上监听到，使用定时任务25分钟扫描特定模式key*，这样会监听到过期；         
+
+2. 扫描的时候发现生产和测试一个是集群一个是单机，改为集群cluster扫描模式或单机模式，由于keys比较少，所以扫描5s内就完成；
+
+3. 过期监听到，检查:用pattern模式匹配是否是版本同步缓存过期的key
 
