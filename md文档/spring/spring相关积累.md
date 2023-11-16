@@ -226,7 +226,28 @@ public class ImportMain {
 ```
 
 总结：以上共三种方式能够注入bean
+### 6.**spring-boot-starter-actuator**
 
+actuator 可用于监控、管理生产应用，为微服务提供审计、检查检查、指标收集，HTTP 跟踪，动态修改日志等等特性
+
+官网地址：https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html#actuator.enabling
+
+```
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+</dependencies>
+```
+
+#### 6.1 Endpoints 端点
+
+针对以上所说的功能，actuator提供了很多内置的端点，并用允许用户添加自己的端点。所谓端点，可以理解为功能接口。例如：健康检查端点（GET /actuator/health），日志端点（GET /actuator/loggers）等。
+
+端点需要满足启用（enabled）和公开（exposed），才可用。
+
+端点规则：`/actuator` + 端点ID，例如：/actuator/health
 ## 二、SpringWeb
 
 ### 1.实现https访问
