@@ -232,7 +232,19 @@ public void queryUserInfo(QueryUserRequest request) {
     + " and start<:#{#vo.endTime} ", nativeQuery = true)
 List<xxxxx> getAvoidDetail(@Param("vo") AvoidDetailReqVo vo); // 注意param中名字要和方法名vo一致
 ```
+##### 8.  interface接收sql数据
 
+```
+"select http_code as httpCode from proxy"  需要写成小驼峰
+HttpCodeDto getHttpCode();
+
+public interface HttpCodeDto {
+   
+    String getHttpCode();
+}
+```
+
+### 
 ### 2. 注解相关
 
 #### 2.1 @MappedSuperclass
