@@ -1148,6 +1148,8 @@ visualVM Launcher
 
 SequenceDiagram  在类的方法上右键选中能查看序列图
 
+jclasslib **快速查看类的字节码文件**
+
 ### 2. 快捷键
 
 win+e  最近使用的文件
