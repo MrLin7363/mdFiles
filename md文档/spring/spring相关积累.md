@@ -226,6 +226,7 @@ public class ImportMain {
 ```
 
 总结：以上共三种方式能够注入bean
+
 ### 6.**spring-boot-starter-actuator**
 
 actuator 可用于监控、管理生产应用，为微服务提供审计、检查检查、指标收集，HTTP 跟踪，动态修改日志等等特性
@@ -241,13 +242,164 @@ actuator 可用于监控、管理生产应用，为微服务提供审计、检�
 </dependencies>
 ```
 
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*" #["health","info"]  或者  "health,info"
+        exclude: "dev" 
+```
+
 #### 6.1 Endpoints 端点
 
 针对以上所说的功能，actuator提供了很多内置的端点，并用允许用户添加自己的端点。所谓端点，可以理解为功能接口。例如：健康检查端点（GET /actuator/health），日志端点（GET /actuator/loggers）等。
 
 端点需要满足启用（enabled）和公开（exposed），才可用。
 
-端点规则：`/actuator` + 端点ID，例如：/actuator/health
+端点规则：`/actuator` + 端点ID，例如：
+
+```
+/env
+/health 健康检查
+/mappings 显示所有的@RequestMapping路径
+/loggers 日志
+/info 定制信息
+/metrics 查看内存、CPU核心等系统参数
+/trace 用户请求信息
+```
+
+访问 http://127.0.0.1:8003/actuator 列举所有的endpoints
+
+源码比如  MetricsEndpoint
+
+#### 6.2 logger
+
+动态修改日志级别
+
+get  查看所有类日志级别 http://127.0.0.1:8003/actuator/loggers
+
+post   动态修改该包的日志级别 http://127.0.0.1:8003/actuator/loggers/com.lin.ServiceProxy
+
+```
+{
+    "configuredLevel": "INFO"
+}
+```
+
+post 动态修改全部结点的日志级别    http://127.0.0.1:8003/actuator/loggers/ROOT
+
+#### 6.3 应用健康检查
+
+https://blog.csdn.net/weixin_44421461/article/details/131199025
+
+入口 ： HealthEndpoint
+
+Spring boot的健康信息都是从`ApplicationContext`中的各种`HealthIndicator Beans`中收集到的，Spring boot框架中包含了大量的`HealthIndicators`的实现类，当然你也可以实现自己认为的健康状态。
+
+默认情况下，最终的 Spring Boot 应用的状态是由 `HealthAggregator` 汇总而成的，汇总的算法是：
+
+1. 设置状态码顺序：`setStatusOrder(Status.DOWN, Status.OUT_OF_SERVICE, Status.UP, Status.UNKNOWN);`。
+2. 过滤掉不能识别的状态码。
+3. 如果无任何状态码，整个 Spring Boot 应用的状态是 `UNKNOWN`。
+4. 将所有收集到的状态码按照 1 中的顺序排序。
+5. 返回有序状态码序列中的第一个状态码，作为整个 Spring Boot 应用的状态。
+
+health 通过合并几个健康指数检查应用的健康情况。Spring boot框架自带的 `HealthIndicators` 目前包括：
+
+| CassandraHealthIndicator       | Checks that a Cassandra database is up.                   |
+| :----------------------------- | :-------------------------------------------------------- |
+| `DiskSpaceHealthIndicator`     | Checks for low disk space.                                |
+| `DataSourceHealthIndicator`    | Checks that a connection to `DataSource` can be obtained. |
+| `ElasticsearchHealthIndicator` | Checks that an Elasticsearch cluster is up.               |
+| `InfluxDbHealthIndicator`      | Checks that an InfluxDB server is up.                     |
+| `JmsHealthIndicator`           | Checks that a JMS broker is up.                           |
+| `MailHealthIndicator`          | Checks that a mail server is up.                          |
+| `MongoHealthIndicator`         | Checks that a Mongo database is up.                       |
+| `Neo4jHealthIndicator`         | Checks that a Neo4j server is up.                         |
+| `RabbitHealthIndicator`        | Checks that a Neo4j server is up.                         |
+| `RedisHealthIndicator`         | Checks that a Redis server is up.                         |
+| `SolrHealthIndicator`          | Checks that a Solr server is up.                          |
+
+##### 6.3.21 **自定义健康组**
+
+https://dev.to/sabyasachi/inside-spring-boot-health-endpoint-2mej
+
+因为/health默认全部都检查，如果单独检查某些可以配置健康组
+
+```yaml
+management:
+  endpoint:
+    health:
+      show-details: always #可以看到哪些indicator
+      group:
+        custom: #自定义
+          include: "redis"
+```
+
+You can then check the result by hitting `localhost:8080/actuator/health/custom`.
+
+**自定义 HealthIndicator 健康检查**
+
+通过实现`HealthIndicator`的接口来实现，并将该实现类注册为spring bean
+
+或者继承  AbstractHealthIndicator 或者直接继承相关的类indicator
+
+##### 6.3.2 自定义redis检查
+
+```
+management:
+  endpoint:
+    health:
+      show-details: always
+      group:
+        redis:
+          include: ["redisCheck"]
+```
+
+```
+@Component("redisCheck")
+public class RedisCheckHealthIndicator extends RedisReactiveHealthIndicator {
+    public RedisCheckHealthIndicator(ReactiveRedisConnectionFactory connectionFactory) {
+        super(connectionFactory);
+    }
+
+    protected Mono<Health> doHealthCheck(Health.Builder builder) {
+        Mono<Health> healthMono = super.doHealthCheck(builder);
+        // 自己实现redis不健康的一些逻辑等
+        return healthMono;
+    }
+}
+```
+
+http://127.0.0.1:8003/actuator/health/redis  只访问这个indicator
+
+##### 6.3.2 源码
+
+HealthEndpointSupport.getAggregateContribution 会执行各个healthIndicator ,每一个都会经过HealthIndicator 然后到各自的 HealthIndicator
+
+但是部分数据库或中间件比如mongo,redis,elasticSearch等，redisHealthIndicator 默认不启用，而是使用异步的RedisReactiveHealthIndicator
+
+每次启动都会进行一次健康检查，如果有问题启动失败，但是如果是redis有问题，因为是异步的所以项目还能启动成功
+
+关闭redis检查
+
+```
+  health:
+    redis:
+      enabled: false #默认开启的
+```
+
+注意：如果另外调health接口，那么RedisReactiveHealthIndicator会阻塞直到检查完毕，依然能检查出是否有问题
+
+#### 6.4 监控页面配置
+
+Spring Boot Monitor是一个对Spring boot admin监控工具做修改并适配单机的监控工具，完美继承了Spring boot admin的风格
+
+- Spring Boot Monitor官网：https://www.pomit.cn/SpringBootMonitor
+
+http://127.0.0.1:8080/monitor
+
 ## 二、SpringWeb
 
 ### 1.实现https访问
@@ -1799,4 +1951,31 @@ https://doc.xiaominfo.com/docs/action/springfox/springfox3
 查看 spring源码那个文件
 
 
+
+## 四、spring-cloud
+
+### 4.1 Flux
+
+[Flux、Mono、Reactor 实战（史上最全）_reactor mono-CSDN博客](https://blog.csdn.net/crazymakercircle/article/details/124120506?spm=1001.2101.3001.6650.3&utm_medium=distribute.pc_relevant.none-task-blog-2~default~CTRLIST~Rate-3-124120506-blog-124292452.pc_relevant_3mothn_strategy_recovery&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2~default~CTRLIST~Rate-3-124120506-blog-124292452.pc_relevant_3mothn_strategy_recovery&utm_relevant_index=6)
+
+基于Pblisher机制，只有订阅了才会真正执行
+
+Flux
+Flux 是一个发出(emit)0-N个元素组成的异步序列的Publisher,可以被onComplete信号或者onError信号所终止。
+
+在响应流规范中存在三种给下游消费者调用的方法 onNext, onComplete, 和onError
+
+
+### 4.2 Mono
+
+Mono 是一个发出(emit)`0-1`个元素的Publisher,可以被`onComplete`信号或者`onError`信号所终止
+
+```
+        healthMono.doOnNext(health->{
+            System.out.println(health.getStatus());
+            if (!health.getStatus().equals(Status.UP)){
+
+            }
+        }).subscribe(); // 订阅才会执行
+```
 
