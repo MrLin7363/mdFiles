@@ -86,6 +86,49 @@ public static <T extends Comparable & Serializable> T getMin(T...a){
 
 /x是十六进制， 网站里选十六进制输入22就可以展示出来
 
+### 6. 定时任务Timer
+
+https://blog.csdn.net/weixin_45734473/article/details/133647534
+
+`Timer`提供了三种定时模式：
+
+- 一次性任务
+- 按照固定的延迟执行(`fixed delay`) 不管上次执行时间
+- 按照固定的周期执行（`fixed rate`） 等待上次执行完的间隔
+
+```
+@Service
+public class HealthCheckTimer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(HealthCheckTimer.class);
+
+    private Timer timer = null;
+
+    @Autowired
+    private HealthIndicator healthIndicator;
+
+    @PostConstruct
+    public void init() {
+        timer = new Timer("thread-redisHealthCheck");
+        TimerTask task = new TimerTask() {
+            @Override
+            public void run() {
+                LOGGER.info("HealthCheckTimer：" + new Date());
+                healthIndicator.doHealthCheck(new Health.Builder());
+            }
+        };
+        long delay = 3000L;
+        timer.scheduleAtFixedRate(task, delay, 5000l);
+    }
+}
+```
+
+通过上面分析，Java的定时调度可以通过`Timer&TimerTask`来实现。由于其实现的方式为单线程，因此从JDK1.3发布之后就一直存在一些问题，大致如下：
+
+1. 多个任务之间会相互影响
+2. 多个任务的执行是串行的，性能较低
+
+此时可以使用 **ScheduledExecutorService**
+
 ## 二、异常
 
 JAVA异常
@@ -1044,7 +1087,13 @@ old年老代；
 
 -> 策略：尽量在年轻代就回收完，因为年轻代的回收暂停很短暂，所以扩大成8:1:1的模式
 
-## 七、测试
+### 9. 工具
+
+#### 9.1 内存分析工具MAT(Memory Analyzer Tool)
+
+能够分析 dump文件可视化
+
+## 七、并发测试
 
 ### 1. jmeter
 
@@ -1111,6 +1160,10 @@ windows提供给TCP/IP链接的端口为 1024-5000，并且要四分钟来循环
 2.在HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters右键Parameters；
 3.添加一个新的DWORD，名字为MaxUserPort；
 4.然后双击MaxUserPort，输入数值数据为65534，基数选择十进制；
+
+### 2. ab.exe
+
+
 
 ## 八、idea使用相关
 
@@ -1370,4 +1423,43 @@ ConditionObject是同步器AbstractQueuedSynchronizer的内部类，因为Condit
 
 对象嵌套太深：如何优雅判空获取里层对象
 Optional.ofNullable(rspBody).map(TracePageCommRsp::getData).map(PageRspData::getList).orElseGet(Collections::emptyList);
+
+### 12.1 Flux
+
+```
+public static void main(String[] args) {
+    //just()：创建Flux序列，并声明数据流，
+    Flux<Integer> integerFlux = Flux.just(1, 2, 3, 4);//整形
+    //subscribe()：订阅Flux序列，只有进行订阅后才回触发数据流，不订阅就什么都不会发生
+    integerFlux.subscribe(System.out::println);
+
+    Flux<String> stringFlux = Flux.just("hello", "world");//字符串
+    stringFlux.subscribe(System.out::println);
+
+    //fromArray(),fromIterable()和fromStream()：可以从一个数组、Iterable 对象或Stream 对象中创建Flux序列
+    Integer[] array = {1,2,3,4};
+    Flux.fromArray(array).subscribe(System.out::println);
+
+    List<Integer> integers = Arrays.asList(array);
+    Flux.fromIterable(integers).subscribe(System.out::println);
+
+    Stream<Integer> stream = integers.stream();
+    Flux.fromStream(stream).subscribe(System.out::println);
+
+    Mono data = Mono.just("bole");
+
+
+    data.subscribe(i -> System.out.println(i));
+    Flux.just("Hello", "World").subscribe(System.out::println);
+    Flux.fromArray(new Integer[]{1, 2, 3}).subscribe(System.out::println);
+    Flux.empty().subscribe(System.out::println);
+    Flux.range(1, 10).subscribe(System.out::println);
+    Flux.interval(Duration.of(10, ChronoUnit.MINUTES)).subscribe(System.out::println);
+
+    Flux.range(1, 100).buffer(20).subscribe(System.out::println);
+    Flux.range(1, 10).bufferUntil(i -> i%2 == 0).subscribe(System.out::println);
+    Flux.range(1, 10).bufferWhile(i -> i%2 == 0).subscribe(System.out::println);
+
+}
+```
 
