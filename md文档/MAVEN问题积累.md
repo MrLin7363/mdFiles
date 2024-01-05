@@ -330,6 +330,15 @@ while((line = br.readLine()) != null){
 }
 br.close();
 ```
+### 12. install失败
+
+因为测试类要去找一些配置中心的文件，但是是llt环境找不到服务启动不了，所以maven有
+
+```
+mvn install -Dmaven.test.skip=true    -DskipTests
+```
+
+idea的右上角有个图标skiptest
 
 ## MAVEN知识点
 
