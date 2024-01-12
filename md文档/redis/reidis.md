@@ -80,9 +80,23 @@ Redis Cluster 集群选举跟哨兵集群选举跟哨兵集群选举还是不太
 
 slave广播Pong消息通知其他集群节点。
 
+#### 2.5 actuate检测redis健康降级问题积累
+
+原先方案：直接继承ReactiveClusterCommands.clusterGetClusterInfo() 
+
+ReactiveClusterCommands.clusterGetClusterInfo() 获取集群信息也是随机节点去获取，可能有某个节点不通的情况会获取失败并且抛异常
+
+LettuceReactiveRedisClusterConnection.executeCommandOnArbitraryNode
+
+想判断集群是否健康降级，只能通过判断是否全部master节点都健康的情况
+
+https://blog.csdn.net/jx_ZhangZhaoxuan/article/details/132002563
+
 ## 二、数据结构
 
 ### 1. 常用指令
+
+指令大全地址 [redis 命令手册](https://redis.com.cn/commands.html)
 
 连接集群  redis-cli -h 7.225.150.145 -p 6379 -a password -c           
 
@@ -265,6 +279,8 @@ scan其他命令
 7. Scan 可以保证在开始检索之前，被删除的元素一定不会被查询出来；
 8. 在迭代过程中如果有元素被修改， Scan 不保证能查询出相关的元素。
 
+##### （1）Jdies客户端
+
 ```
 <dependency>
     <groupId>org.springframework.boot</groupId>
@@ -309,6 +325,7 @@ public class RedisClusterUtil {
 
     public List<String> getPatternKeysCluster(String matchKey) {
         List<String> result = new ArrayList<>();
+        // redisTemplate.getConnectionFactory().getClusterConnection()是随机获取其中一个节点包括slave去连接，有可能ping不通失败
         Map<String, JedisPool> clusterNodes = ((JedisCluster) redisTemplate.getConnectionFactory()
             .getClusterConnection().getNativeConnection()).getClusterNodes();
         for (Map.Entry<String, JedisPool> entry : clusterNodes.entrySet()) {
@@ -423,6 +440,81 @@ public class RedisClusterUtil {
             }
         }
         return result;
+    }
+```
+
+##### （2）luttce客户端
+
+```  max-http-header-size: 16KB
+spring:
+  data:
+    redis:
+      repositories:
+        enabled: false
+  redis:
+    cluster:
+      nodes: xxx
+      max-redirects: 2
+    password: ${REDIS_PASSWORD:xxx}
+    connect-timeout: 5000
+    lettuce:
+      pool:
+        min-idle: 10 *#**最小空闲连接
+        max-idle: 20 *#**最大空闲数
+        max-wait: 2s *#* *连接池最大阻塞等待时间**(**使用负值标识没有限制**)
+      cluster:    #配置拓扑刷新，redis节点挂了，更新.
+        refresh:
+          period: 30s
+          adaptive: true
+```
+
+```
+Maven: io.lettuce:lettuce-core:6.1.10.RELEASE
+```
+
+```
+    /*
+    每个url去建立连接
+    1.全部建立不了，全挂或不通->降级
+    2.其中一个建立了，记录master节点是那些
+    3.其中某个建立不了连接->记录下来，如果被后面建立连接节点的master命中->降级
+     */ // 2分钟 2次master有问题就降，恢复也是
+    public void connect() {
+        // 创建RedisURI
+        RedisURI redisURI = RedisURI.builder().withHost("7.xxx.xxx.145").withPort(6379)
+            .withPassword(password.toCharArray()).withTimeout(Duration.ofSeconds(3)).build();
+        StatefulRedisClusterConnection<String, String> connection = null;
+        RedisClusterClient redisClusterClient = null;
+        try {
+            redisClusterClient = RedisClusterClient.create(redisURI);
+            connection = redisClusterClient.connect();
+            RedisAdvancedClusterCommands<String, String> commands = connection.sync();
+            NodeSelection<String, String> clusterNodes = commands.all();
+            // 获取所有cluster节点
+            for (int i = 0; i < clusterNodes.size(); i++) {
+                RedisClusterNode node = clusterNodes.node(i);
+                if (StringUtils.isBlank(node.getSlaveOf())) {
+                    // is master
+                    String host = node.getUri().getHost();
+                    if (masterList.get() == null) {
+                        masterList.set(new StringBuffer(host));
+                    } else if (masterList.get().indexOf(host) == -1) {
+                        masterList.set(masterList.get().append(',').append(host));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("redis health check connect error", e);
+        } finally {
+            if (redisClusterClient != null) {
+                redisClusterClient.shutdown();
+            }
+            // 关闭client  connection也会自动关闭
+            //if (connection != null) {
+           //     connection.close();
+           // }
+
+        }
     }
 ```
 
@@ -560,6 +652,20 @@ Boolean redisKey = stringRedisTemplate.hasKey(key);
 ```
 zrangebyscore com.lin.redis:pv_set 2 +inf withscores
 ```
+
+### 6. 底层数据结构
+
+redis String 的底层数据结构 SDS https://zhuanlan.zhihu.com/p/619828101
+
+list的底层数据结构quicklist=linkedlist+ziplist https://baijiahao.baidu.com/s?id=1763496410158464261&wfr=spider&for=pc
+
+
+
+hash =ziplist+hashtable
+
+set = intset+hashtable
+
+zset=ziplist+zskiplist
 
 ## 三、 内存淘汰机制&删除策略
 
@@ -736,3 +842,53 @@ public class RedisConfig extends CachingConfigurerSupport
 
 3. 过期监听到，检查:用pattern模式匹配是否是版本同步缓存过期的key
 
+### 9.2 限流
+
+第一推荐阅读，：读这个就行https://zhuanlan.zhihu.com/p/479956069
+
+六种限流算法对比 -推荐阅读   [常见的限流方式_aiguangyuan的博客-CSDN博客](https://blog.csdn.net/weixin_40629244/article/details/125970505)
+
+#### 9.1.1 计数器算法
+
+计数器算法是Redis实现限流的常见手段，其核心思想为统计单位时间内的请求数量并与阈值进行比较，当达到阈值时就拒绝后续访问，从而起到限制流量的目的。具体实现方法如下：
+
+1.1 使用Redis的原子操作incr操作，实现计数器的自增。
+
+1.2 通过Redis对key设置过期时间，例如设置一分钟后过期。
+
+1.3 当计算器的值超过限制阈值时，拒绝访问，否则可以继续访问并重置计数器值。
+
+需要注意的是，由于计数器算法只记录请求数量，无法区分不同类型的请求，可能会存在被恶意用户绕过的可能性。因此，这种方法适用于单一请求的场景，如接口限流。
+
+#### 9.1.2 漏桶算法
+
+漏桶算法也是一种流量控制算法，和计数器算法相比，漏桶算法会对请求进行一个统一的速率限制，而非单纯地限制访问量。其主要思想为模拟水桶中的水流量，加入一个固定的速率加入水，如果水桶满了，就拒绝后续的请求，否则按照固定的速率处理请求。具体实现方法如下：
+
+2.1 将漏桶看作一个固定大小的容器，以固定的速率漏出水。
+
+2.2 使用Redis的List数据类型，将每个请求按照时间顺序加入List中，即水流进入水桶的过程。
+
+2.3 使用Redis的过期机制，将List中已经达到一定时间的请求移出，即水从桶中漏出的过程。
+
+2.4 当请求加入List时，判断List的长度是否达到桶的最大限制，如果超过限制，就拒绝请求，否则可以正常处理。
+
+漏桶算法可用于应对各种请求，由于限制速率而非请求数量，不容易被恶意用户绕过，常用于对整个应用的限流控制。
+
+#### 9.1.3 令牌桶算法
+
+令牌桶算法也属于流量控制算法，其主要思想为固定速率向令牌桶中添加令牌，一个请求需要获取令牌才能执行，当令牌桶中没有令牌时，请求将被拒绝。具体实现方法如下：
+
+3.1 使用Redis的List数据类型，将一定数量的令牌添加到List中，表示令牌桶的容量。
+
+3.2 使用Redis过期机制，每当有请求到来时，如果List中还有令牌，则可以正常处理请求，并从List中移除一个令牌，否则拒绝请求。
+
+3.3 当令牌生成速度过快或者请求到来速度过慢时，可能会出现令牌桶溢出的情况。因此，可使用Redis的有序集合数据类型，记录每次执行的时间和执行次数，用于在下一次添加令牌时，调整添加令牌的数量，以适应实际情况。
+
+令牌桶算法不仅能够限制并发数，而且可以控制请求速率，比较适合对底层资源进行保护，比如数据库连接池、磁盘IO等。
+
+由于除了两个数字出现了一次，其他数字都出现了两次。根据异或运算的性质：**两个相同的数异或结果为000，一个数与000异或还是它自己，异或运算满足交换律**。把numsnums*n**u**m**s*中的元素全部异或起来的结果eoreor*eor*就是那两个只出现一次的数字的异或结果。而这两个数不相同，意味着eoreor*eor*至少有一位是111，我们可以用lowbitlowbit*l**o**w**bi**t*运算拿到最低位的111，然后遍历numsnums*n**u**m**s*数组，将所有数nums[i]nums[i]*n**u**m**s*[*i*]按照这一位是不是111分成两类，初始化num1=num2=0num_1=num_2=0*n**u**m*1=*n**u**m*2=0。
+
+1. 如果当前位是111，就将nums[i]nums[i]*n**u**m**s*[*i*]异或到num1num_1*n**u**m*1上。
+2. 如果当前位是000，就将nums[i]nums[i]*n**u**m**s*[*i*]异或到num2num_2*n**u**m*2上。
+
+这样一来，两个只出现一次的数就会被分别异或到num1num_1*n**u**m*1和num2num_2*n**u**m*2上，而其他数也会被分别异或到这两个数上。而由于其他数都出现了两次，所以最终它们就会被异或成000，num1num_1*n**u**m*1和num2num_2*n**u**m*2就是那两个只出现一次的数。
