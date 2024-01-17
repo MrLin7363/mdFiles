@@ -386,29 +386,14 @@ ConfigurableListableBeanFactory 是一个接口 , 其 prelnstantiateSingletons�
 
 FactoryBean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
 
-当用户使用容器本身时可以使用转义字符来得到FactoryBean本身以区别通过FactoryBean 产生的实例对象和FactoryBean对象本身。在 BeanFactory中通过如下代码定义了该转义字符： String FACTORY BEAN PREFIX ="&";
 
-如果 myJndiObject是一个 FactoryBean ,则使用 &myJndiObject 得到的是 myJndiObject 对 象 , 而不是myJndiObject产生出来的对象。
 
-**FactoryBean 源 码 **
 
-**AbstractBeanFactory 的 getBean()方法调用 FactoryBean **
 
-在前面我们分析Spring loC容器实例化Bean并进行依赖注入过程的源码时，提到在getBean方法触发容器实例化Bean的时候会调用AbstractBeanFactory的 doGetBean()方法来进行实例化的过 程
+1. BeanFactory:负责生产和管理Bean的一个工厂接口，提供一个Spring Ioc容器规范,
+2. FactoryBean: 一种Bean创建的一种方式，对Bean的一种扩展。对于复杂的Bean对象初始化创建使用其可封装对象的创建细节。可以定义一个类实现这个接口，将类注入到BeanFactory中
 
-在 上 面 获 取 给 定 Bean的 实 例 对 象 的 getObjectForBeanlnstance()方 法 中 ，会 调 用 FactoryBeanRegistrySupport 类的 getObjectFromFactoryBean()方 法 ,该方法实现了 Bean 工厂生 产 Bean实例对象。
 
-Dereference(解引用):一个在C/C+ +中应用比较多的术语，在 C+ +中 ,” *“是解引用符号,而” & ”是引用符号，解引用是指变量指向的是所引用对象的本身数据，而不是引用对象的内存地址。
-
-**AbstractBeanFactory 生产 Bean 实例对象**
-
-BeanFactory接口调用其实现类的getObject方法来实现创 建 Bean实例对象的功能
-
-**工厂Bean的实现类getObject方法创建Bean实例对象 **
-
-Factory Bea n 的实现类有非常多，比 如 ：Proxy、RMI、JNDI、ServletContextFactoryBean 等等 FactoryBean接口为Spring容器提供了一个很好的封装机制，具体的getObject有不同的实现类根 据不同的实现策略来具体提供,我们分析一个最简单的AnnotationTestFactoryBean的实现源码
-
-其他的Proxy , RMI , JNDI等 等 ,都是根据相应的策II略提供getObjectQ的实现。这里不做一一分 析 ,这已经不是Spring的核心功能，感兴趣的小伙可以再去深入研究。
 
 ### 12.再述 autowiring
 
