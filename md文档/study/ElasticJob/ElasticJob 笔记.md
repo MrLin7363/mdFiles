@@ -1,104 +1,94 @@
-ElasticJob 笔记
+Linux系统操作笔记
 
-官网： https://shardingsphere.apache.org/elasticjob/current/cn/features/elastic/
+## 一、Linux
 
-https://shardingsphere.apache.org/elasticjob/legacy/lite-2.x/02-guide/event-trace/    推荐
+### 1.快捷键
 
-分片策略： https://blog.csdn.net/qq_37960603/article/details/122270721
+#### 1. 命令行
 
-shardingTotalCount 指定任务执行的分片，推荐1片；否则任务会分到不同的服务器执行，这里就参考上面分片策略。
+ctrl+a ctrl+e 分别代表把管标移动到最前和最后
 
-```
-  jobs:
-    UrlJob:
-      cron: 0 * * * * ?
-      shardingTotalCount: 1
-      description: desc
-      jobErrorHandlerType: LOG
-      elasticJobClass: xxx.UrlJob
-      disabled: false
-	  overwrite: true  //false会更改不会覆盖之前已经注册的
-```
+ctrl+u ctrl+k 分别代表光标处往前和光标处往后*删除*
 
-### POM依赖
+shift+insert / 右键  = 粘贴
+
+右键 = 复制粘贴到命令行
+
+### 1、命令
+
+#### ps
 
 ```
-<dependency>
-    <groupId>org.apache.shardingsphere.elasticjob</groupId>
-    <artifactId>elasticjob-lite-spring-boot-starter</artifactId>
-    <version>3.0.1</version>
-</dependency>
+ps -aux --width=300          # width能显示出所有内容
 ```
 
-### 积累点
+https://www.cnblogs.com/qiuyu666/p/12580110.html
 
-#### 1. 本地启动不启动job
+## 二、ubuntu
+
+### 1. 安装下载环境
+
+CentOS 使用 yum 管理器，Ubuntu 使用 apt 管理器，所以在 Ubuntu 上安装软件，用的是 apt 命令，而不是 yum 命令。apt 命令语法和具体使用如下：
+
+sudo apt-get update
+
+安装 ping:       sudo apt-get install iputils-ping 
+
+### 2. 禁止ip访问
+
+sudo apt-get install iptables
 
 ```
-@SpringBootApplication(exclude = ElasticJobLiteAutoConfiguration.class)
+sudo iptables -A INPUT -s 7.256.zz.zzz -j DROP
+sudo iptables -A INPUT -s 7.256.zz.zz -j DROP
+
+解除限制
+sudo iptables -D INPUT -s x.x.x.x -j DROP
+ 
+sudo iptables-save
 ```
 
-### 源码解析3.0.1
+### 3. ubuntu没有systemctl
 
-启动springboot项目，Elastic 流程
+```
+System has not been booted with systemd as init system (PID 1). Can't operate.
+Failed to connect to bus: Host is down
+```
 
-ElasticJobBootstrapConfiguration.afterSingletonsInstantiated()
+**为什么会出现这样的报错信息呢？**
 
-JobScheduler.JobScheduler  这是每一个注册的job都是一个Scehduler  JobScheduler.findTracingConfiguration会去找trace配置
+原因是当你尝试使用 systemd 命令来管理 Linux 系统上的服务的时候，但是系统中根本就没有使用 systemd，而是（很可能）使用的 SysV init (sysvinit)。
 
-JobScheduler里面的 LiteJobFacade->JobTracingEventBus->RDBTracingListener->RDBJobEventStorage
+这是怎么回事呢？
 
-RDBJobEventStorage.RDBJobEventStorage 会去判断是否已经创建了两张事件记录表  job_execution_log/job_status_trace_log
+如果你是在 windows 中通过 WSL 使用的 Ubuntu，默认情况下系统使用的是 SysV 而不是 systemd。当你使用 systemctl 命令（适用于有 systemd init 的系统）的时候，系统自然会报错。
+
+那么怎样查看到底用的是哪个 init 系统呢？可以使用如下命令来检查 PID 为 1 的进程（即系统运行的第一个进程）名称：
+
+复制
+
+```
+ps -p 1 -o comm=1.
+```
+
+它应该在输出中显示 init 或 sysv（或类似的东西）。如果你看到的是 init，那么你的系统就没有使用 systemd，应该使用 init 命令。
+
+**如何修复 System has not been booted with systemd 报错信息？**
+
+最简单的方式就是不使用 systemctl 命令，而是使用 sysvinit 命令。
+
+sysvinit 也不复杂，它与 systemctl 命令的语法相似。如下表格为两个命令的对比：
+
+| Systemd command                | Sysvinit command             |
+| ------------------------------ | ---------------------------- |
+| systemctl start service_name   | service service_name start   |
+| systemctl stop service_name    | service service_name stop    |
+| systemctl restart service_name | service service_name restart |
+| systemctl status service_name  | service service_name status  |
+| systemctl enable service_name  | chkconfig service_name on    |
+| systemctl disable service_name | chkconfig service_name off   |
+
+大家在初始学习的时候，如果遇到类似的错误，可以尝试使用上面表格中等效的命令，就不会看到 "System has not been booted with systemd as init system" 这样的报错信息了。
 
 
 
-监听数据插入事件表流程
-
-RDBTracingListener.listen()
-
-RDBJobEventStorage.preparedStatement.execute()   执行插入逻辑
-
-ShardingPreparedStatement.executeUpdate().initPreparedStatementExecutor()
-
-execute().prepare()    JobStatusTraceLog
-
-
-
-插入事件表流程
-
-RDBTracingListener.repository.addJobStatusTraceEvent    会插入状态先，如果分片不为空则执行下面的execution
-
-RDBTracingListener.repository.addJobExecutionEvent
-
-
-
-如果不设置 overwrite=true  后面再加上 tracing type =RDB 会注册不上去，原先的还是tracing type没有这个值
-
-原因读取的jobConfig未包含 extraConfigurations
-
-
-
-注意事项:
-
-如果本地启动，而dev环境上已经有了elasticJob，则分片不一定分到本地机器上执行
-
-### 参数解析
-
-| 属性名                      | 类型    | 是否必填 | 缺省值 | 描述                                                         |
-| --------------------------- | ------- | -------- | ------ | ------------------------------------------------------------ |
-| id                          | String  | `是`     |        | 作业名称                                                     |
-| class                       | String  | 否       |        | 作业实现类，需实现`ElasticJob`接口，脚本型作业不需要配置     |
-| registry-center-ref         | String  | `是`     |        | 注册中心`Bean`的引用，需引用`reg:zookeeper`的声明            |
-| cron                        | String  | `是`     |        | `cron`表达式，用于配置作业触发时间                           |
-| sharding-total-count        | int     | `是`     |        | 作业分片总数                                                 |
-| sharding-item-parameters    | String  | 否       |        | 分片序列号和参数用等号分隔，多个键值对用逗号分隔 分片序列号从`0`开始，不可大于或等于作业分片总数 如： `0=a,1=b,2=c` |
-| job-parameter               | String  | 否       |        | 作业自定义参数 可以配置多个相同的作业，但是用不同的参数作为不同的调度实例 |
-| monitor-execution           | boolean | 否       | true   | 监控作业运行时状态 每次作业执行时间和间隔时间均非常短的情况，建议不监控作业运行时状态以提升效率。因为是瞬时状态，所以无必要监控。请用户自行增加数据堆积监控。并且不能保证数据重复选取，应在作业中实现幂等性。 每次作业执行时间和间隔时间均较长的情况，建议监控作业运行时状态，可保证数据不会重复选取。 |
-| monitor-port                | int     | 否       | -1     | 作业监控端口 建议配置作业监控端口, 方便开发者dump作业信息。 使用方法: echo “dump” \| nc 127.0.0.1 9888 |
-| max-time-diff-seconds       | int     | 否       | -1     | 最大允许的本机与注册中心的时间误差秒数 如果时间误差超过配置秒数则作业启动时将抛异常 配置为`-1`表示不校验时间误差 |
-| failover                    | boolean | 否       | false  | 是否开启失效转移 仅`monitorExecution`开启，失效转移才有效    |
-| misfire                     | boolean | 否       | true   | 是否开启错过任务重新执行                                     |
-| job-sharding-strategy-class | String  | 否       | true   | 作业分片策略实现类全路径 默认使用平均分配策略 详情参见：[作业分片策略](http://dangdangdotcom.github.io/elastic-job/post/job_strategy) |
-| description                 | String  | 否       |        | 作业描述信息                                                 |
-| disabled                    | boolean | 否       | false  | 作业是否禁止启动 可用于部署作业时，先禁止启动，部署结束后统一启动 |
-| overwrite                   | boolean | 否       | false  | 本地配置是否可覆盖注册中心配置 如果可覆盖，每次启动作业都以本地配置为准 |
