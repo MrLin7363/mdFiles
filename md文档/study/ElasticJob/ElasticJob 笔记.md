@@ -145,6 +145,29 @@ start.sh启动
 
 如果要追溯每个作业的执行情况，则先设置数据源，然后再查询job执行情况
 
+### 2.2 修改控制台后端代码
+
+加压完elasticJob-lite-ui-bin 后会有lib文件夹，在里面放入打包好的shardingsphere-elasticjob-lite-ui-backend-3.0.2.jar（名称要改为一致） 就行；
+
+官网下载的backend jar包里包含前端public文件夹静态资源，需要将这个拷贝进后端代码里一起package打包，将public文件夹放入resources里面就可以直接启动后端项目，访问到控制台了 。
+
+如果需要mysql 需要在ext-lib里面放入 mysql-connector-java-8.0.30.jar包 或者后端代码增加pom文件 
+
+```
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>8.0.30</version>
+</dependency>
+```
+
+控制台conf下的appplication.properties冲突优先查询这个，但是代码里面也需要这个文件 
+
+```
+## Uncomment the following property to allow adding DataSource dynamically.
+dynamic.datasource.allowed-driver-classes={'com.mysql.cj.jdbc.Driver','org.h2.Driver','org.postgresql.Driver'}
+```
+
 ## 三、与zookeeper
 
 实例选举实现过程分析：
@@ -245,16 +268,50 @@ public static class DynamicDataSource extends AbstractRoutingDataSource {
 }
 ```
 
-**问题原因** ： mysql返回的地方将密码给去掉，直接eventTraceDataSourceConfigurationService.loadAll().getEventTraceDataSourceConfiguration()在这个类去掉的话，后面用到这个类的密码时连不上
+**问题原因** ： 如果ext-lib里面添加了mysql-connector的驱动，但是代码里面pom文件没有添加，那么代码执行mysql连接的时候找不到驱动代码报错，添加即可
+
+```
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.30</version>
+        </dependency>
+```
+
+### 4.2 3.0.2版本将数据库连接源的密码不展示在页面
+
+```
+# 3.0.2版本需要手动将下面的注释打开，在conf/application.properties  但是后端工程代码里面的注释不要打开，不然每次启动backend.jar就会去连接mysql会启动失败
+# Uncomment the following property to allow adding DataSource dynamically.
+# 第一种方案：这里要注释掉，否则启动控制台会连接mysql启动失败，直接默认使用conf/application，那里面打开注释就行
+# 第二种方案：如果这里打开，则pom文件需要添加mysql的依赖
+dynamic.datasource.allowed-driver-classes={'com.mysql.cj.jdbc.Driver','org.h2.Driver','org.postgresql.Driver'}
+
+
+# 不同于3.0.1 这里添加了驱动校验，所以上面要写明驱动
+    @PostMapping(value = "/connectTest")
+    public ResponseResult<Boolean> connectTest(@RequestBody final EventTraceDataSourceConfiguration config, final HttpServletRequest request) {
+        failedIfDriverClassNotAllowed(config.getDriver()); // 扫描上面的allowed-driver-classes值判断是否已经添加了驱动
+        setDataSourceNameToSession(config, request.getSession());
+        return ResponseResultUtil.build(true);
+    }
+```
+
+密码过滤不展示
 
 ```
     @GetMapping("/load")
     public ResponseResult<Collection<EventTraceDataSourceConfiguration>> load(final HttpServletRequest request) {
-        eventTraceDataSourceConfigurationService.loadActivated().ifPresent(eventTraceDataSourceConfig -> setDataSourceNameToSession(eventTraceDataSourceConfig, request.getSession()));
-        Set<EventTraceDataSourceConfiguration> configurations
-                = eventTraceDataSourceConfigurationService.loadAll().getEventTraceDataSourceConfiguration();
-        configurations.forEach(con -> con.setPassword(""));
-        return ResponseResultUtil.build(configurations);
+        eventTraceDataSourceConfigurationService.loadActivated().ifPresent(
+            eventTraceDataSourceConfig -> setDataSourceNameToSession(eventTraceDataSourceConfig, request.getSession()));
+        Set<EventTraceDataSourceConfiguration> res = eventTraceDataSourceConfigurationService.loadAll()
+            .getEventTraceDataSourceConfiguration();
+        res.forEach(r -> r.setPassword("")); // 直接将返回的xml密码设置为空，因为每次都是重新查询所有不影响
+        return ResponseResultUtil.build(res);
     }
 ```
+
+### 4.3 启动load接口获取数据源和注册中心超时10s
+
+因为zk连接不会那么快，所以刚启动项目需要等待10分钟让连接上注册中心
 
