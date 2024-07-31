@@ -834,7 +834,7 @@ public class RedisConfig extends CachingConfigurerSupport
 | uvZset             | uv>1          | 前5天内的uvZSet（设置过期时间，扫描时找不到），通过模式匹配scan模糊查找；根据版本，union hyperlog ，然后每个版本 addzSet，最后rangeZset |
 | pvZset             | pv>3          | 前5天内的pvZSet（设置过期时间，扫描时找不到），通过模式匹配scan模糊查找，addzSet，rangeZset |
 | setAll             | 活跃版本      | 优先取set，再从uvZset和pvZset中取top多少版本，值由redis实时控制；过期监听如果是活跃版本，则同步 |
-| 过期监听           |               |                                                              |
+| 过期监听           |               | 活跃版本缓存过期了，更新缓存                                 |
 
 过期监听： 1. 使用redis的listener, 由于删除策略惰性删除，key过期不会马上监听到，使用定时任务25分钟扫描特定模式key*，这样会监听到过期；         
 
@@ -845,6 +845,8 @@ public class RedisConfig extends CachingConfigurerSupport
 ### 9.2 限流
 
 第一推荐阅读，：读这个就行https://zhuanlan.zhihu.com/p/479956069
+
+计数器，固定窗口，滑动窗口（无法处理短时间大流量），漏桶（控制请求的频率，无法处理突发流量），令牌桶
 
 六种限流算法对比 -推荐阅读   [常见的限流方式_aiguangyuan的博客-CSDN博客](https://blog.csdn.net/weixin_40629244/article/details/125970505)
 
