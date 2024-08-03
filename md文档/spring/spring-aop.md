@@ -292,6 +292,8 @@ public class NromalAspect {
 
 ## 2.1 静态代理
 
+例如下面的
+
 https://blog.csdn.net/qq_46097208/article/details/122621889
 
 角色分析
@@ -304,71 +306,50 @@ https://blog.csdn.net/qq_46097208/article/details/122621889
 抽象角色/接口：
 
 ```
-// 抽象角色/接口
-public interface Rent {
-    public void rent();
+public interface BuyPhoneService {
+    void buyPhone();
 }
 ```
 
 ```
-/**
- * 房东 真实角色
- */
-public class Host implements Rent{
+public class BuyPhoneServiceImpl implements BuyPhoneService{
     @Override
-    public void rent() {
-
+    public void buyPhone() {
+        System.out.println("买手机");
     }
 }
 ```
 
 ```
-/**
- * 代理角色
- */
-@AllArgsConstructor
-@NoArgsConstructor
-public class Proxy implements Rent{
-
-    private Host host;
-
+public class BuyPhoneProxy implements BuyPhoneService{
+ 
+    private final BuyPhoneService buyPhoneService;
+ 
+    public BuyPhoneProxy(BuyPhoneService buyPhoneService) {
+        this.buyPhoneService = buyPhoneService;
+    }
+ 
     @Override
-    public void rent() {
-        seeHouse();
-        host.rent();
-        contract();
-        fare();
-    }
-
-    //看房子
-    public void seeHouse(){
-        System.out.println("看房子");
-    }
-
-    //收中介费
-    public void fare(){
-        System.out.println("收中介费");
-    }
-
-    //合同
-    public void contract(){
-        System.out.println("租赁合同");
+    public void buyPhone() {
+        System.out.println("内部优惠打八折");
+        buyPhoneService.buyPhone();
+        System.out.println("送手机大礼包！！！");
     }
 }
 ```
 
 ```
-/**
- * 客户端访问 代理角色
- */
-public class Client {
+public class Buy {
     public static void main(String[] args) {
-        // 房东租房子
-        Host host=new Host();
-        // 代理，中介帮忙租房子，但是代理角色有附属操作，比如收中介费
-        Proxy proxy=new Proxy(host);
-        // 不用面对房东直接找中介租房
-        proxy.rent();
+        BuyPhoneService buyPhoneService = new BuyPhoneServiceImpl();
+        System.out.println("使用代理前");
+        System.out.println("----------------------");
+        buyPhoneService.buyPhone();
+        System.out.println("----------------------");
+        System.out.println("使用代理后");
+        System.out.println("----------------------");
+        BuyPhoneProxy buyPhoneProxy = new BuyPhoneProxy(buyPhoneService);
+        buyPhoneProxy.buyPhone();
     }
 }
 ```
@@ -379,7 +360,7 @@ public class Client {
 - 公共业务交给大力角色，实现了业务的分工
 - 公共业务扩展的时候，方便集中管理
   缺点
-- 一个真实角色会产生一个代理角色；代码量翻倍，开发效率变低
+- 缺点是每一个被代理的类都需要编写一个代理类，如果被代理的类较多，会导致代码冗余  例如上面代理类需要实现BuyPhoneService，如果又来一个又得实现
 
 ## 2.2 JDK动态代理
 

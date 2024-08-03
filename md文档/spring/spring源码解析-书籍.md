@@ -382,6 +382,14 @@ ConfigurableListableBeanFactory 是一个接口 , 其 prelnstantiateSingletons�
 
 ### 11.关于 FactoryBean 和 BeanFactory
 
+
+
+BeanFactory是Spring IoC容器的底层基础设施，‌负责管理Bean的生命周期；‌而FactoryBean则是用于创建Bean的特殊工厂Bean，‌具体产生什么样的Bean由其实现类决定
+
+
+
+
+
 在 Spring中 ,有两个很容易混淆的类：BeanFactory和 FactoryBean。 BeanFactory : Bean工厂 , 是一个工厂(Factory), 我 们 Spring loC容器的最顶层接口就是这个BeanFactory , 它的作用是管理Bean , 即实例化、定位、配置应用程序中的对象及建立这些对象间的 依赖。
 
 FactoryBean : 工厂Bean , 是一个Bean , 作用是产生其他bean实例。通常情况下，这 种 Bean 没有什么特别的要求，仅需要提供一个工厂方法，该方法用来返回其他Bean实例。通常情况下，Bean 无须自己实现工厂模式，Spring容器担任工厂角色；但少数情况下,容器中的Bean本身就是工厂，其 作用是产生其它Bean实例。
