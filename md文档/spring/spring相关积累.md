@@ -938,6 +938,22 @@ Reactive 框架采用事件驱动，通过Reactive Streams API 实现异步逻�
 
 Webclient 是 Spring WebFlux 开发库的一部分。因此，写客户端代码时，还可以应用函数式编程与流式 API，支持 Reactive 类型（Mono 和 Flux）。
 
+
+
+其实WebClient处理单个HTTP请求的响应时长并不比RestTemplate更快，但是它处理并发的能力更强，非阻塞的方式可以使用较少的线程以及硬件资源来处理更多的并发。
+
+  所以响应式非阻塞IO模型的核心意义在于，提高了单位时间内有限资源下的服务请求的并发处理能力，而不是缩短了单个服务请求的响应时长。
+
+- 与RestTemplate相比，WebClient的优势
+
+  - 非阻塞响应式IO，单位时间内有限资源下支持更高的并发量。
+
+  - 支持使用Java8 Lambda表达式函数。
+
+  - 支持同步、异步、Stream流式传输。
+
+    
+
 **实例比较**
 
 为了展示两种方法差异，需要多客户端并行请求进行性能测试。可以看到，收到多个客户端请求后，阻塞方法的性能显著下降。
@@ -1078,14 +1094,21 @@ public class WebClientConfig {
             
             // 自定义线程池-有必要-默认不建线程池，可能会connection reset  
   			ConnectionProvider provider = ConnectionProvider.builder("webClient").maxConnections(500)
+  				//最大空闲时间
                 .maxIdleTime(Duration.ofSeconds(20)) // 能够防止connection reset
                 .maxLifeTime(Duration.ofSeconds(60))
-                .pendingAcquireTimeout(Duration.ofSeconds(60)).evictInBackground(Duration.ofSeconds(120)).build();
+                // 等待队列超时时间
+              .pendingAcquireTimeout(Duration.ofSeconds(60))
+              // 等待队列大小 pendingAcquireMaxCount
+              .evictInBackground(Duration.ofSeconds(120)).build();
                 
             SslContext sslContext = getSslContext();
             HttpClient httpClient = HttpClient.create(provider).secure(t -> t.sslContext(sslContext))
+            	// 连接超时一般3s-5s
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeout * 1000)
+                // 读取超时一般5s-10s
                 .doOnConnected(conn -> conn.addHandlerLast(new ReadTimeoutHandler(readTimeout)));
+                // .addHandlerLast(new WriteTimeoutHandler(10));也可以设置写超时一般不用
             WebClient webClient = WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient))
             	// 默认响应buffer只有256K左右很容易超
             	.codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
@@ -1122,6 +1145,38 @@ public class WebClientConfig {
     }
 }
 ```
+
+```
+
+Netty 库配置 
+// 配置动态连接池 ConnectionProvider provider = ConnectionProvider.elastic("elastic pool"); 配置固定大小连接池，如最大连接数、连接获取超时、空闲连接死亡时间等
+ConnectionProvider provider = ConnectionProvider.fixed("fixed", 45, 4000, Duration.ofSeconds(6));
+HttpClient httpClient = HttpClient.create(provider)
+		.secure(sslContextSpec -> {
+			SslContextBuilder sslContextBuilder = SslContextBuilder.forClient().trustManager(new File("E://server.truststore"));
+			sslContextSpec.sslContext(sslContextBuilder);
+		}).tcpConfiguration(tcpClient -> {
+			// 指定Netty的 select 和 work 线程数量
+			LoopResources loop = LoopResources.create("kl-event-loop", 1, 4, true);
+			return tcpClient.doOnConnected(connection -> {
+				// 读写超时设置
+				connection
+				.addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
+				.addHandlerLast(new WriteTimeoutHandler(10));
+			})
+				// 连接超时设置
+			   .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+			   .option(ChannelOption.TCP_NODELAY, true)
+			   .runOn(loop);
+		});
+WebClient.builder()
+		.clientConnector(new ReactorClientHttpConnector(httpClient))
+		.build()
+                        
+原文链接：https://blog.csdn.net/weixin_42679286/article/details/135607779
+```
+
+
 
 #### 3.3 实现代码
 
@@ -1387,7 +1442,7 @@ reactor-http-nio的12个线程在服务刚起来时不会创建，只有当第�
 
 ##### 3.7.2 创建过程
 
-reactor-http-nio的12个线程 创建过程
+reactor-http-nio的12个select线程 创建过程
 
 ```
 NioEventLoopGroup
@@ -1979,5 +2034,27 @@ Mono 是一个发出(emit)`0-1`个元素的Publisher,可以被`onComplete`信号
 
             }
         }).subscribe(); // 订阅才会执行
+```
+
+## 五. flyway自动建表
+
+```
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/ums_bd1?useUnicode=true&characterEncoding=utf8&autoReconnect=true&zeroDateTimeBehavior=convertToNull&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+  flyway:
+    baselineOnMigrate: false   # 是否启动项目时创建表创建
+
+```
+
+![image-20210413174616245](C:\Users\cool\AppData\Roaming\Typora\typora-user-images\image-20210413174616245.png)
+
+```
+  <dependency>
+  	<groupId>org.flywaydb</groupId>
+	<artifactId>flyway-core</artifactId>
+  </dependency>
 ```
 
