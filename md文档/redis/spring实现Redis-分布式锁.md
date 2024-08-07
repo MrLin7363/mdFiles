@@ -1061,12 +1061,25 @@ public class RedissLockUtils {
         return lock;
     }
 
+
     /**
-     * 尝试获取锁
-     * @param lockKey
-     * @param waitTime 等待时间   单位：秒
-     * lock.tryLock()第二个参数 leaseTime 续期参数,不设置默认等于-1，就是由redission的定时任务timetask去续期 arg=10  单位：秒
-     * @return
+     * 尝试获取锁 -推荐
+     * @param waitTime 等待时间   单位：秒   一般设置为-1默认获取不到立即失败
+     */
+    public static boolean tryLock(String lockKey) {
+        RLock lock = redissonClient.getLock(lockKey);
+        try {
+            return lock.tryLock();
+        } catch (InterruptedException e) {
+            return false;
+        }
+    }
+    
+    
+    /**
+     * 尝试获取锁 
+     * @param waitTime 等待时间   单位：秒   一般设置为-1默认获取不到立即失败
+     * lock.tryLock()第二个参数 leaseTime 续期参数,不设置默认等于-1，就是由redission的定时任务timetask去续期  10s定时任务延期30s
      */
     public static boolean tryLock(String lockKey, int waitTime) {
         RLock lock = redissonClient.getLock(lockKey);
@@ -1080,10 +1093,8 @@ public class RedissLockUtils {
 
     /**
      * 尝试获取锁
-     * @param lockKey
      * @param waitTime 等待时间   单位：秒
-     * @param leaseTime 上锁后自动释放锁时间,不会自动续期   单位：秒
-     * @return
+     * @param leaseTime 如果设置 >=0 上锁后自动释放锁时间,不会自动续期   单位：秒
      */
     public static boolean tryLock(String lockKey, int waitTime, int leaseTime) {
         RLock lock = redissonClient.getLock(lockKey);
@@ -1151,6 +1162,7 @@ boolean isLock;
 try {
     // isLock = redLock.tryLock();
     // 500ms拿不到锁, 就认为获取锁失败。10000ms即10s是锁失效时间。
+    // long waitTime, long leaseTime, TimeUnit unit
     isLock = redLock.tryLock(500, 10000, TimeUnit.MILLISECONDS);
     System.out.println("isLock = "+isLock);
     if (isLock) {
@@ -1162,6 +1174,13 @@ try {
     redLock.unlock();
 }
 ```
+
+```
+	可以不设置获取时间和过期时间， 这样直接获取全部结点直到成功或失败，并且自动延期  
+  isLock = redLock.tryLock();
+```
+
+
 
 唯一**ID**
 
@@ -1431,6 +1450,41 @@ end;
 
 只要线程一加锁成功，就会启动一个`watch dog`看门狗，它是一个后台线程，会每隔10秒检查一下，如果线程1还持有锁，那么就会不断的延长锁key的生存时间。因此，Redisson就是使用watch dog解决了**「锁过期释放，业务没执行完」**问题。
 
+
+
+### 原理
+
+[Redission实现分布式锁_redission分布式锁实现-CSDN博客](https://blog.csdn.net/m0_64116616/article/details/138925028)
+
+#### **trylock（）方法**
+
+三个参数**waitTime**（就是重试等待时间     默认-1,这种情况就是立即抢锁，获取不到就失败），**leaseTime**（过期时间默认-1），**TimeUnit**（时间单位）
+
+
+
+先获取锁，如果获取失败，判断当前耗时是否超过waitTime，如果超过获取失败；  如果小于，通过消息订阅的方式，如果锁释放了，唤醒并且再次判断是否超时，再去抢锁
+
+
+
+#### 看门狗
+
+不设置 leaseTime 或者设置=-1  开启看门狗机制
+
+Redisson的出现，其中的看门狗机制很好解决续期的问题，它的主要步骤如下：
+
+在获取锁的时候，不指定leaseTime或者只能将leaseTime设置为-1，这样才能开启看门狗机制。
+
+在tryLockInnerAsync方法里尝试获取锁，如果获取锁成功调用scheduleExpirationRenewal执行看门狗机制
+
+在scheduleExpirationRenewal中比较重要的方法就是renewExpiration，当线程第一次获取到锁（也就是不是重入的情况），那么就会调用renewExpiration方法开启看门狗机制。
+
+在renewExpiration会为当前锁添加一个**延迟任务task**，这个延迟任务会在10s后执行，执行的任务就是将锁的有效期刷新为30s（这是看门狗机制的默认锁释放时间）
+并且在任务最后还会继续递归调用renewExpiration。
+
+
+
+而当程序出现异常，那么看门狗机制就不会继续递归调用`renewExpiration`，这样锁会在30s后自动释放。
+
 ## 方案七：多机实现的分布式锁Redlock+Redisson
 
 前面六种方案都只是基于单机版的讨论，还不是很完美。其实Redis一般都是集群部署的：
@@ -1468,9 +1522,22 @@ RedLock的实现步骤:如下
 - 如果大于等于3个节点加锁成功，并且使用的时间小于锁的有效期，即可认定加锁成功啦。
 - 如果获取锁失败，解锁！
 
-Redisson实现了redLock版本的锁，有兴趣的小伙伴，可以去了解一下哈~
 
 
+为什么要向多个Redis申请锁？
+
+> 向多台Redis申请锁，即使部分服务器异常宕机，剩余的Redis加锁成功，整个锁服务依旧可用。
+
+为什么步骤 3 加锁成功后，还要计算加锁的累计耗时？
+
+> 加锁操作的针对的是分布式中的多个节点，所以耗时肯定是比单个实例耗时更，还要考虑网络延迟、丢包、超时等情况发生，网络请求次数越多，异常的概率越大。
+> 所以即使 N/2+1 个节点加锁成功，但如果加锁的累计耗时已经超过了锁的过期时间，那么此时的锁已经没有意义了
+
+释放锁操作为什么要针对所有结点？
+
+> 为了清除干净所有的锁。在之前申请锁的操作过程中，锁虽然已经加在Redis上，但是在获取结果的时候，出现网络等方面的问题，导致显示失败。所以在释放锁的时候，不管以前有没有加锁成功，都要释放所有节点相关锁。
+>
+> 
 
 # 四，比较好的博客方案 
 
