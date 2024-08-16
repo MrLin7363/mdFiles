@@ -624,6 +624,37 @@ public class PlanService implements RecycleService<VO> {
 }
 ```
 
+
+
+#### 优化
+
+```
+通过ApplicationContextAware 不用每个mapper单独加进去避免后期太多
+@Component
+public class RefundHandlerContext implements ApplicationContextAware {
+
+    private Map<String, AbstractRefundHandler> refundHandlerMap;
+
+    @Override
+    public void setApplicationContext(ApplicationContext context) throws BeansException {
+        // AbstractRefundHandler实现各个子策略，然后抽象类拿到并加入到map中
+        String[] names = context.getBeanNamesForType(AbstractRefundHandler.class);
+        refundHandlerMap = new HashMap<>(names.length);
+        for (String name : names) {
+            AbstractRefundHandler handler = context.getBean(name, AbstractRefundHandler.class);
+            String key = handler.getBizCode().getCode();
+            refundHandlerMap.put(key, handler);
+        }
+    }
+
+    public AbstractRefundHandler getHandler(String key){
+        return refundHandlerMap.get(key);
+    }
+}
+```
+
+
+
 ## 五、缓存
 
 
