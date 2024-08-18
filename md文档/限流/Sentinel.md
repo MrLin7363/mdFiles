@@ -45,6 +45,23 @@ https://blog.csdn.net/qq_33589510/article/details/108966188
 
 官网 https://github.com/alibaba/Sentinel/wiki/%E5%9C%A8%E7%94%9F%E4%BA%A7%E7%8E%AF%E5%A2%83%E4%B8%AD%E4%BD%BF%E7%94%A8-Sentinel
 
+![image-20230319132407747](https://i-blog.csdnimg.cn/blog_migrate/98bd808b2b6920afc95a6defd453cc2e.png)
+
+Sentinel的Sentinel Dashboard 控制台,后面是一个微服务。它是Sentinel的客户端。
+
+你要知道我们在实际生产当中，微服务一定是集群同一个微服务是不是也会部署多份啊？
+
+那当你向一个Dashboard 里编写规则时，那会把这个规则推送给这个微服务的某一个Sentinel 的客户端。而它就会将这个规则持久化到一个本地的文件或者是数据库里去，那这样我们就实现了规则的持久化。
+
+但是呢，如果说我还有一个服务，也需要这个规则呢？我怎么知道这个规则有没有变化呢？所以呢，我们的微服务呢，就会去定时轮询啊，这个文件或者是数据库。
+
+当监听到数据库或者文件的内容发生变化时，我就知道规则更新了，那我是不是就可以去更新我自己的这个规则缓存了？
+
+这样呢，就可以实现多个Sentinel 客户端的规则同步了，但是呢，这种定时轮询的方式。它存在一些缺点啊，第一呢，是时效性比较差，你想你这边刚写进去。那边那个服务它还不一定去读取呢，对不对？
+
+它是定时的呀，那如果它现在还没轮到去读取，那现在你的服务与服务之间。是不是数据就不一致了呀？规则就不一致了。
+
+所以这种模式存在一个时效性的问题，从而就导致了一个数据的不一致问题啊。那因此，这种方案也不是非常的推荐。
 
 
 ## 规则持久化-Push模式-推荐
@@ -53,6 +70,13 @@ https://blog.csdn.net/weixin_53041251/article/details/129651977
 
 需要修改控制台源码然后打包成jar包，发布之后就能连特定的数据中心比如zk等
 
+![image-20230319134318519](https://i-blog.csdnimg.cn/blog_migrate/4a123b8010317a2e357af96dd60296c8.png)
+
+这个图是我们已经讲过的啊，这个部署模式的流程图，那我们知道啊，在这种模式当中Sentinel Dashboard 需要把规则推送到nacos，而不再是推送到Sentinel 的客户端。
+
+但是呢，在Sentinel 的默认实现当中啊，它都是推到客户端去的。
+
+而推到nacos 的这些功能并没有在Sentinel Dashboard的源码中实现。所以如果我们要实现push模式，我们不得不自己去改动Sentinel Dashboard的源代码。
 
 
 ## Sentinel客户端
