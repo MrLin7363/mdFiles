@@ -716,7 +716,8 @@ org.apache.http.NoHttpResponseException: 21.153.143.183:8080 failed to respond
 ```
 httpclient = HttpClientBuilder.create() 
 .setMaxConnPerRoute(20) 
-.setConnectionReuseStrategy(NoConnectionReuseStrategy.INSTANCE) //解决NoHttpResponseException问题 
+// 解决NoHttpResponseException问题 
+.setConnectionReuseStrategy(NoConnectionReuseStrategy.INSTANCE) // 直接不用连接复用；或者设置最大生命时间+最大空闲时间， 像weblient那样
 .setMaxConnTotal(200) 
 .build(); 
 ```
@@ -1651,6 +1652,8 @@ https://projectreactor.io/docs/netty/release/reference/index.html#_connection_po
 
 1. idleTimeout 表示数据库连接在数据库连接池中最大的闲置时间。描述是 600000 （十分钟）。
 2. maxLifetime 表示连接池中连接最大的声明周期。默认是 1800000 （30分钟）。
+
+设置空闲时间，减少甚至避免connection by peer , 因为假如还没到30分钟，但是又被使用，重新刷新了空闲时间，一般都不会存在上述问题
 
 **自定义定义线程池**
 
