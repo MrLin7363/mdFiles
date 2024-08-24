@@ -320,3 +320,84 @@ dynamic.datasource.allowed-driver-classes={'com.mysql.cj.jdbc.Driver','org.h2.Dr
 
 因为zk连接不会那么快，所以刚启动项目需要等待10分钟让连接上注册中心
 
+
+
+
+
+## 优势 和目标
+
+1. 并行分布式调度  ，   比如一个实例多线程执行，但是一台CPU是有限的，如果任务分发到多个机器中，并行调度性能会提高很多
+2. 高可用：一个实例的任务挂了，另一个实例还在运行
+3. 弹性扩容：增加节点
+4. 任务管理和检车：统一管理界面
+5. 避免任务的重复执行： 分布式锁避免
+
+
+
+## 架构
+
+**elasticJob-Lite**  
+
+每个应用加入这个jar包，将任务注册到zookeeper
+
+选举，注册更新，故障转移，日志输出
+
+**注册中心 zookeeper**
+
+每个job
+
+```java
+/job 
+    /leader    127.0.0.1:8080 当前选举到的节点
+    /instance 每个实例 127.0.0.1:8080   127.0.0.1:8082
+    /sharding
+        /0
+            /instance  127.0.0.1:8080  运行该分片的实例
+        /1 
+            /instance  127.0.0.1:8082  运行该分片的实例
+...
+```
+
+**Console 控制台**
+
+
+
+## 分片案例
+
+比如四个分片，分别备份数据的某四个类型，文件备份处理，查询出文件，备份到哪里
+
+
+
+elasticJob 拿到给四台机器推送四个分片，item分别是0,1,2,3
+
+elasticJob 只分发分片，但是具体对每个分片做什么交由业务处理
+
+```java
+        execute(ShardingContext context){
+            int item=context.getItem();
+            
+            String type =context.getShardingParamater();
+            // 业务处理比如， 分别处理text 类型的数据， 处理 json的数据 处理xml的数据 
+        }
+```
+
+
+
+最佳分片实践：
+
+分片数量>服务器数量
+
+提升吞吐量， 比如a 机器=1,2,3  三个分片
+
+```java
+  jobs:
+    UrlJob:
+      cron: 0 * * * * ?
+      shardingTotalCount: 4
+      shardingItemParameter: 0=text,1=json,2=image
+      description: desc
+      jobErrorHandlerType: LOG
+      elasticJobClass: xxx.UrlJob
+      disabled: false
+	  overwrite: true  //false会更改不会覆盖之前已经注册的
+```

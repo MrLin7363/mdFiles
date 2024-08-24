@@ -156,6 +156,31 @@ https://blog.csdn.net/weixin_51146329/article/details/127856341
 4. 头尾函数：用于获取窗口内的第一行或最后一行的值，例如 `FIRST_VALUE()，LAST_VALUE()` 等。
 5. 聚合函数：用于计算窗口内的某个字段的聚合值，例如 `SUM()，AVG()，MIN()，MAX()` 等。
 
+
+
+### 7. SQL注入
+
+数值型注入
+
+```
+SELECT * FROM article WHERE id = ''
+
+传入 // OR '1'='1
+SELECT * FROM users WHERE username = 'OR '1'='1'
+```
+
+注释注入
+
+```
+SELECT * FROM user WHERE username = ‘user’ AND password = ‘pwd123’
+
+
+#：#后所有的字符串都会被当成注释来处理
+SELECT * FROM user WHERE username = ‘user’#' AND password = ‘111
+
+SELECT * FROM user WHERE username = ‘user’-- 'AND password = ‘111’
+```
+
 ## SQL积累
 
 ### 1. limit&offset
