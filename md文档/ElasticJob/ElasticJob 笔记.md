@@ -9,7 +9,8 @@ https://shardingsphere.apache.org/elasticjob/legacy/lite-2.x/02-guide/event-trac
 shardingTotalCount 指定任务执行的分片，1片；否则任务会分到不同的服务器执行，这里就参考上面分片策略。
 
 ```
-  jobs:
+tracing-type:RDB 任务状态执行日志，持久化到数据库
+jobs:
     UrlJob:
       cron: 0 * * * * ?
       shardingTotalCount: 1
@@ -98,12 +99,16 @@ RDBTracingListener.repository.addJobExecutionEvent
 | max-time-diff-seconds       | int     | 否       | -1     | 最大允许的本机与注册中心的时间误差秒数 如果时间误差超过配置秒数则作业启动时将抛异常 配置为`-1`表示不校验时间误差 |
 | failover                    | boolean | 否       | false  | 是否开启失效转移 仅`monitorExecution`开启，失效转移才有效    |
 | misfire                     | boolean | 否       | true   | 是否开启错过任务重新执行                                     |
-| job-sharding-strategy-class | String  | 否       | true   | 作业分片策略实现类全路径 默认使用平均分配策略 详情参见：[作业分片策略](http://dangdangdotcom.github.io/elastic-job/post/job_strategy) |
+| job-sharding-strategy-class | String  | 否       | true   | 作业分片策略实现类全路径 默认使用平均分配策略 <br />a默认平均分片，或者轮询分片详情参见：[作业分片策略](http://dangdangdotcom.github.io/elastic-job/post/job_strategy) |
 | description                 | String  | 否       |        | 作业描述信息                                                 |
 | disabled                    | boolean | 否       | false  | 作业是否禁止启动 可用于部署作业时，先禁止启动，部署结束后统一启动 |
 | overwrite                   | boolean | 否       | false  | 本地配置是否可覆盖注册中心配置 如果可覆盖，每次启动作业都以本地配置为准 |
 
+
+
 ## 二、控制台
+
+连接注册中心  查看作业状态，作业运行轨迹
 
 源码  https://github.com/apache/shardingsphere-elasticjob-ui/tree/3.0.2
 
